@@ -14,9 +14,10 @@ app = Flask(__name__)
 df = pd.read_csv('C:/Users/a0311/OneDrive/桌面/專題/new/new/python/鎖定關鍵字.csv')
 df.dropna(subset=['關鍵字'], inplace=True)
 
-# 获取关键字和标签
+# 获取关键字、标签和类型
 keywords = df['關鍵字'].tolist()
 labels = df['是否是詐騙'].tolist()  # 假设标签列名为 '是否是詐騙'
+types = df['類型'].tolist()  # 假设类型列名为 '類型'
 
 # 初始化TF-IDF特征向量，使用 ngram_range=(1, 2) 来捕捉单词对的特征
 vectorizer = TfidfVectorizer(max_features=1000, max_df=1.0, min_df=1, ngram_range=(1, 2))
@@ -70,23 +71,33 @@ def predict():
     
     # 调试信息
     print(f"新样本: {new_sample}")
+    print(f"One-Class SVM 预测结果: {svm_result}")
     
-    for keyword, label in zip(keywords, labels):
+    # 标志是否找到匹配的关键字
+    keyword_found = False
+    
+    for keyword, label, type_ in zip(keywords, labels, types):
         # 使用正则表达式进行部分匹配
         pattern = re.compile(re.escape(keyword), re.IGNORECASE)
         if pattern.search(new_sample):  # 正则表达式匹配
-            print(f"匹配到关键字: {keyword} (标签: {label})")  # 调试输出
+            keyword_found = True
+            print(f"匹配到关键字: {keyword} (标签: {label}, 类型: {type_})")  # 调试输出
             if label == 1:
                 is_fraud = True
-            matched_keywords.append(keyword)
+            matched_keywords.append({'keyword': keyword, 'type': type_})
+
+    # 打印是否找到关键字
+    print(f"是否找到关键字: {keyword_found}")
 
     # 综合判断结果
-    if svm_result and not is_fraud:
+    if not keyword_found:  # 如果没有找到匹配的关键字
+        result = "非詐騙"
+    elif svm_result and not is_fraud:
         result = "非詐騙"
     else:
         result = "詐騙"
     
-    # 返回结果中加入匹配到的关键字
+    # 返回结果中加入匹配到的关键字和类型
     return jsonify({'result': result, 'matched_keywords': matched_keywords})
 
 if __name__ == '__main__':
