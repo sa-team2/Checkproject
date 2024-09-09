@@ -11,12 +11,7 @@ import re
 app = Flask(__name__)
 
 # 读取CSV文件并初始化模型
-try:
-    df = pd.read_csv('C:/Users/a0311/OneDrive/桌面/專題/new/new/python/鎖定關鍵字.csv')
-except FileNotFoundError:
-    print("错误: CSV 文件 '鎖定關鍵字.csv' 未找到。请检查文件路径。")
-    exit()
-
+df = pd.read_csv('C:/Users/a0311/OneDrive/桌面/專題/new/new/python/鎖定關鍵字.csv')
 df.dropna(subset=['關鍵字'], inplace=True)
 
 # 获取关键字和标签
@@ -95,4 +90,5 @@ def predict():
     return jsonify({'result': result, 'matched_keywords': matched_keywords})
 
 if __name__ == '__main__':
-    app.run(port=5000, debug=True)
+    # 设置应用在 localhost:5000 运行
+    app.run(debug=True, host='127.0.0.1', port=5000)
