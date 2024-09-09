@@ -6,16 +6,26 @@ from sklearn.cluster import KMeans
 from sklearn.svm import OneClassSVM
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics import silhouette_score
+import re
 
 app = Flask(__name__)
 
 # 读取CSV文件并初始化模型
-df = pd.read_csv('鎖定關鍵字.csv')  # 替换成实际的路径
+try:
+    df = pd.read_csv('C:/Users/a0311/OneDrive/桌面/專題/new/new/python/鎖定關鍵字.csv')
+except FileNotFoundError:
+    print("错误: CSV 文件 '鎖定關鍵字.csv' 未找到。请检查文件路径。")
+    exit()
+
 df.dropna(subset=['關鍵字'], inplace=True)
 
-data = df['關鍵字'].tolist()  # 将文字转换成TF-IDF特征向量
-vectorizer = TfidfVectorizer(max_features=1000, max_df=1.0, min_df=1)
-X = vectorizer.fit_transform(data).toarray()
+# 获取关键字和标签
+keywords = df['關鍵字'].tolist()
+labels = df['是否是詐騙'].tolist()  # 假设标签列名为 '是否是詐騙'
+
+# 初始化TF-IDF特征向量，使用 ngram_range=(1, 2) 来捕捉单词对的特征
+vectorizer = TfidfVectorizer(max_features=1000, max_df=1.0, min_df=1, ngram_range=(1, 2))
+X = vectorizer.fit_transform(keywords).toarray()
 
 # 数据标准化
 scaler = StandardScaler()
@@ -48,17 +58,41 @@ for cluster in set(clusters):
 @app.route('/predict', methods=['POST'])
 def predict():
     data = request.json
-    new_sample = data.get('text', '')
+    new_sample = data.get('text', '').lower()  # 转换为小写以避免大小写敏感问题
 
+    # 处理新样本
     new_sample_vector = vectorizer.transform([new_sample]).toarray()
     new_sample_scaled = scaler.transform(new_sample_vector)
     new_sample_pca = pca.transform(new_sample_scaled)
     
+    # 使用One-Class SVM模型进行预测
     predictions = [ocsvm.predict(new_sample_pca)[0] for ocsvm in ocsvm_models]
+    svm_result = any(pred == 1 for pred in predictions)
     
-    result = "非詐騙" if any(pred == 1 for pred in predictions) else "詐騙"
+    # 关键字匹配和标签检查
+    is_fraud = False
+    matched_keywords = []
+    
+    # 调试信息
+    print(f"新样本: {new_sample}")
+    
+    for keyword, label in zip(keywords, labels):
+        # 使用正则表达式进行部分匹配
+        pattern = re.compile(re.escape(keyword), re.IGNORECASE)
+        if pattern.search(new_sample):  # 正则表达式匹配
+            print(f"匹配到关键字: {keyword} (标签: {label})")  # 调试输出
+            if label == 1:
+                is_fraud = True
+            matched_keywords.append(keyword)
 
-    return jsonify({'result': result})
+    # 综合判断结果
+    if svm_result and not is_fraud:
+        result = "非詐騙"
+    else:
+        result = "詐騙"
+    
+    # 返回结果中加入匹配到的关键字
+    return jsonify({'result': result, 'matched_keywords': matched_keywords})
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    app.run(port=5000, debug=True)
