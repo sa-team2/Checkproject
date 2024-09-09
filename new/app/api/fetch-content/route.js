@@ -49,15 +49,15 @@ async function processImage(imageUrl) {
     }
 }
 
-// 添加调用 Python 服务的部分
-async function sendTextToPythonService(text) {
+// 修改后的 sendTextToPythonService 函数
+async function sendTextToPythonService(text, additionalText) {
     try {
         const response = await fetch('http://localhost:5000/predict', { // 假设 Python 后端运行在 localhost:5000
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ text }),
+            body: JSON.stringify({ text: text + "\n\n" + additionalText }), // 合并文本
         });
 
         if (!response.ok) {
@@ -86,12 +86,7 @@ export async function POST(request) {
         await page.goto(url, { waitUntil: 'domcontentloaded' });
 
         const content = await page.evaluate(() => {
-            const article = document.querySelector('article');
-            if (article) {
-                return article.innerText;
-            }
-            const paragraphs = Array.from(document.querySelectorAll('p'));
-            return paragraphs.map(p => p.innerText).join('\n\n');
+            return document.body.innerText;
         });
 
         const imageUrls = await page.evaluate(() => {
@@ -107,18 +102,19 @@ export async function POST(request) {
 
         const ocrText = ocrTexts.join('\n\n');
 
-        // 调用 Python 服务处理文本
-        const pythonResult = await sendTextToPythonService(ocrText);
+        // 调用 Python 服务处理合并后的文本
+        const pythonResult = await sendTextToPythonService(content, ocrText);
 
         const expirationTime = admin.firestore.Timestamp.fromDate(new Date(Date.now() + 60 * 60 * 1000));
 
+        // 确保 matchedKeywords 字段不为 undefined
         const docRef = await db.collection('webContent').add({
             url,
             content,
             ocrText,
             pythonResult, // 保存 Python 处理结果
+            matchedKeywords: pythonResult.matchedKeywords || [], // 如果 undefined，使用空数组
             timestamp: admin.firestore.FieldValue.serverTimestamp(),
-            expiresAt: expirationTime,
         });
 
         return NextResponse.json({
