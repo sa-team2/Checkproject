@@ -114,19 +114,27 @@ export async function POST(request) {
             ocrText,
             pythonResult, // 保存 Python 处理结果
             matchedKeywords: pythonResult.matchedKeywords || [], // 如果 undefined，使用空数组
+            
             timestamp: admin.firestore.FieldValue.serverTimestamp(),
         });
 
+        console.log('Python Result:', pythonResult);
+
+        const result = {
+            matched_keywords: pythonResult.matched_keywords || [], // 如果 undefined，使用空数组
+            result: pythonResult.result || '未检测到' // 如果 undefined，使用默认值
+        };
         return NextResponse.json({
             success: true,
             message: '内容和 OCR 文本成功保存',
             documentId: docRef.id,
             content,
             ocrText,
-            pythonResult,
+            pythonResult: result,
         });
+        
     } catch (error) {
-        console.error('处理失败:', error.message);
+        console.error('處理失败:', error.message);
         return NextResponse.json({ success: false, message: error.message });
     } finally {
         if (browser) {
