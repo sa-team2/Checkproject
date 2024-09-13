@@ -84,7 +84,7 @@ def predict():
             print(f"匹配到关键字: {keyword} (标签: {label}, 类型: {type_})")  # 调试输出
             if label == 1:
                 is_fraud = True
-            matched_keywords.append({'keyword': keyword, 'type': type_})
+            matched_keywords.append({'MatchKeyword': keyword, 'MatchType': type_})
 
     # 打印是否找到关键字
     print(f"是否找到关键字: {keyword_found}")
@@ -98,7 +98,7 @@ def predict():
         result = "詐騙"
     
     # 返回结果中加入匹配到的关键字和类型
-    return jsonify({'result': result, 'matched_keywords': matched_keywords})
+    return jsonify({'FraudResult': result, 'MatchKeywords': matched_keywords})
 
 if __name__ == '__main__':
     # 设置应用在 localhost:5000 运行
