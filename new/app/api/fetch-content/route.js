@@ -4,7 +4,7 @@ import puppeteer from 'puppeteer';
 import Tesseract from 'tesseract.js';
 import sharp from 'sharp';
 import admin from 'firebase-admin';
-import serviceAccount from '../../../config/test-bc002-firebase-adminsdk-47w0c-20f1ea4f43.json'; // 确保路径正确
+import serviceAccount from '../../../config/dayofftest1-firebase-adminsdk-xfpl4-cdd57f1038.json'; // 确保路径正确
 
 // 初始化 Firebase Admin SDK
 if (!admin.apps.length) {
@@ -34,6 +34,8 @@ async function processImage(imageUrl) {
         const processedImageBuffer = await sharp(imageBuffer)
             .resize({ width: 800 })
             .grayscale()
+            .sharpen()  // 增强边缘
+            .threshold(150)  // 设置阈值
             .toBuffer();
 
         // 保持 Tesseract.js 的现有代码不变
@@ -108,12 +110,12 @@ export async function POST(request) {
         const expirationTime = admin.firestore.Timestamp.fromDate(new Date(Date.now() + 60 * 60 * 1000));
 
         // 确保 matchedKeywords 字段不为 undefined
-        const docRef = await db.collection('webContent').add({
+        const docRef = await db.collection('Outcome').add({
+            //FraudRate,
             url,
             content,
             ocrText,
             pythonResult, // 保存 Python 处理结果
-            matchedKeywords: pythonResult.matchedKeywords || [], // 如果 undefined，使用空数组
             
             timestamp: admin.firestore.FieldValue.serverTimestamp(),
         });
