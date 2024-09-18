@@ -1,8 +1,6 @@
 import { NextResponse } from 'next/server';
-import axios from 'axios';
 import puppeteer from 'puppeteer';
-import Tesseract from 'tesseract.js';
-import sharp from 'sharp';
+import axios from 'axios';
 import admin from 'firebase-admin';
 import serviceAccount from '../../../config/dayofftest1-firebase-adminsdk-xfpl4-cdd57f1038.json'; // 确保路径正确
 
@@ -15,51 +13,14 @@ if (!admin.apps.length) {
 
 const db = admin.firestore();
 
-async function fetchImage(url) {
+async function sendImageUrlToPythonService(text, imageUrls) {
     try {
-        const response = await axios.get(url, { responseType: 'arraybuffer' });
-        return Buffer.from(response.data);
-    } catch (error) {
-        console.error(`Failed to fetch image from ${url}:`, error.message);
-        throw error;
-    }
-}
-
-async function processImage(imageUrl) {
-    try {
-        const imageBuffer = await fetchImage(imageUrl);
-        const format = await sharp(imageBuffer).metadata().then(metadata => metadata.format);
-        console.log(`Processing format: ${format}`);
-
-        const processedImageBuffer = await sharp(imageBuffer)
-            .resize({ width: 800 })
-            .grayscale()
-            .sharpen()  // 增强边缘
-            .threshold(150)  // 设置阈值
-            .toBuffer();
-
-        // 保持 Tesseract.js 的现有代码不变
-        const worker = await Tesseract.createWorker("chi_tra", 1, {workerPath: "./node_modules/tesseract.js/src/worker-script/node/index.js"});
-
-        const { data: { text } } = await worker.recognize(processedImageBuffer);
-        await worker.terminate();
-
-        return text;
-    } catch (error) {
-        console.error(`Failed to process image ${imageUrl}:`, error.message);
-        return ''; // 返回空字符串以避免影响后续结果
-    }
-}
-
-// 修改后的 sendTextToPythonService 函数
-async function sendTextToPythonService(text, additionalText) {
-    try {
-        const response = await fetch('http://localhost:5000/predict', { // 假设 Python 后端运行在 localhost:5000
+        const response = await fetch('http://localhost:5000/predict', { // Python 后端地址
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ text: text + "\n\n" + additionalText }), // 合并文本
+            body: JSON.stringify({ text, image_urls: imageUrls }), // 传递文本和图片 URL 列表给 Python
         });
 
         if (!response.ok) {
@@ -97,26 +58,25 @@ export async function POST(request) {
 
         console.log(`Found image URLs: ${imageUrls}`);
 
-        const ocrTexts = await Promise.all(imageUrls
-            .filter(imageUrl => !imageUrl.startsWith('data:image')) // Skip base64 images
-            .map(imageUrl => processImage(imageUrl))
-        );
-
-        const ocrText = ocrTexts.join('\n\n');
-
-        // 调用 Python 服务处理合并后的文本
-        const pythonResult = await sendTextToPythonService(content, ocrText);
+        // 发送文本和图片 URL 到 Python 后端进行处理
+        const pythonResult = await sendImageUrlToPythonService(content, imageUrls);
 
         const expirationTime = admin.firestore.Timestamp.fromDate(new Date(Date.now() + 60 * 60 * 1000));
 
+        const simplifiedPythonResult = {
+            result: pythonResult.result || '未检测到',
+            matched_keywords: (pythonResult.matched_keywords || []).map(item => ({
+                keyword: item.keyword || '无关键词',
+                type: item.type || '无类型'
+            })) // 确保 matched_keywords 是数组，并给每个对象提供默认值
+        };
+
+
         // 确保 matchedKeywords 字段不为 undefined
         const docRef = await db.collection('Outcome').add({
-            //FraudRate,
             url,
             content,
-            ocrText,
-            pythonResult, // 保存 Python 处理结果
-            
+            pythonResult: simplifiedPythonResult, // 确保数据结构简单
             timestamp: admin.firestore.FieldValue.serverTimestamp(),
         });
 
@@ -126,17 +86,16 @@ export async function POST(request) {
             matched_keywords: pythonResult.matched_keywords || [], // 如果 undefined，使用空数组
             result: pythonResult.result || '未检测到' // 如果 undefined，使用默认值
         };
+
         return NextResponse.json({
             success: true,
-            message: '内容和 OCR 文本成功保存',
+            message: '内容和图片 URL 已成功处理',
             documentId: docRef.id,
             content,
-            ocrText,
             pythonResult: result,
         });
-        
     } catch (error) {
-        console.error('處理失败:', error.message);
+        console.error('处理失败:', error.message);
         return NextResponse.json({ success: false, message: error.message });
     } finally {
         if (browser) {
