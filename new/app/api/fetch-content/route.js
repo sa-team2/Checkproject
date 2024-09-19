@@ -68,7 +68,9 @@ export async function POST(request) {
                 matched_keywords: (pythonResult.matched_keywords || []).map(item => ({
                     keyword: item.keyword || '无关键词',
                     type: item.type || '无类型'
-                }))
+                })),
+                FraudRate: pythonResult.FraudRate || 0 // 添加 FraudRate
+
             };
 
             // 存储到 Firebase
@@ -106,7 +108,9 @@ export async function POST(request) {
                 matched_keywords: (pythonResult.matched_keywords || []).map(item => ({
                     keyword: item.keyword || '无关键词',
                     type: item.type || '无类型'
-                }))
+                })),
+                FraudRate: pythonResult.FraudRate || 0 // 添加 FraudRate
+
             };
 
             // 存储到 Firebase
