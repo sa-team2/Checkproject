@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 import joblib
 import cv2
 import numpy as np
@@ -9,6 +10,7 @@ from firebase_admin import credentials, firestore
 
 # 初始化 Flask 应用
 app = Flask(__name__)
+CORS(app, resources={r"/*": {"origins": "http://localhost:5173"}}) #允許5173訪問
 
 # 初始化 Firebase
 cred = credentials.Certificate('../config/dayofftest1-firebase-adminsdk-xfpl4-cdd57f1038.json')  # 替换为你的 Firebase 服务密钥路径
@@ -123,32 +125,36 @@ def predict():
     input_text = data.get('text', '')
     image_urls = data.get('image_urls', [])
 
-    ocr_texts = []
-    ocr_results = {}
+    # 如果没有传递 image_urls，只处理输入文本
+    if not image_urls:
+        combined_text = input_text
+    else:
+        ocr_texts = []
+        ocr_results = {}
 
-    for image_url in image_urls:
-        if image_url in processed_urls:
-            print(f"Skipping already processed URL: {image_url}")
-            continue
-        processed_urls.add(image_url)
-
-        try:
-            image = download_image_from_url(image_url)
-            if image is None:
+        for image_url in image_urls:
+            if image_url in processed_urls:
+                print(f"Skipping already processed URL: {image_url}")
                 continue
+            processed_urls.add(image_url)
 
-            enhanced_image = enhance_image(image)
-            ocr_data = perform_ocr(enhanced_image)
-            ocr_text = extract_text_from_ocr(ocr_data)
-            ocr_texts.append(ocr_text)
-            ocr_results[image_url] = ocr_text
+            try:
+                image = download_image_from_url(image_url)
+                if image is None:
+                    continue
 
-        except Exception as e:
-            print(f"Failed to process image {image_url}: {e}")
-            ocr_results[image_url] = str(e)
+                enhanced_image = enhance_image(image)
+                ocr_data = perform_ocr(enhanced_image)
+                ocr_text = extract_text_from_ocr(ocr_data)
+                ocr_texts.append(ocr_text)
+                ocr_results[image_url] = ocr_text
 
-    # 将 OCR 文本和输入文本合并
-    combined_text = input_text + ' ' + ' '.join(ocr_texts)
+            except Exception as e:
+                print(f"Failed to process image {image_url}: {e}")
+                ocr_results[image_url] = str(e)
+
+        # 将 OCR 文本和输入文本合并
+        combined_text = input_text + ' ' + ' '.join(ocr_texts)
 
     # 获取 Firebase 中的关键字和类型
     keywords_data = get_keywords_from_firebase()
@@ -167,7 +173,7 @@ def predict():
     return jsonify({
         'result': result,
         'matched_keywords': matched_keywords,  # 返回匹配的关键字和类型
-        'ocr_results': ocr_results  # 返回 OCR 结果
+        'ocr_results': ocr_results if image_urls else {}  # 仅当有 image_urls 时返回 OCR 结果
     })
 
 if __name__ == '__main__':
