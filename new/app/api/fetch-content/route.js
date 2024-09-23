@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import puppeteer from 'puppeteer';
-import fetch from 'node-fetch'; // 确保你安装了 node-fetch
+import fetch from 'node-fetch'; 
 import admin from 'firebase-admin';
-import serviceAccount from '../../../config/dayofftest1-firebase-adminsdk-xfpl4-cdd57f1038.json'; // 确保路径正确
+import serviceAccount from '../../../config/dayofftest1-firebase-adminsdk-xfpl4-cdd57f1038.json'; 
 
 // 初始化 Firebase Admin SDK
 if (!admin.apps.length) {
@@ -20,17 +20,17 @@ async function sendImageUrlToPythonService(text, imageUrls) {
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ text, image_urls: imageUrls }), // 传递文本和图片 URL 列表给 Python
+            body: JSON.stringify({ text, image_urls: imageUrls }), // 傳遞文字和圖片 URL 列表給 Python
         });
 
         if (!response.ok) {
-            throw new Error('Failed to call Python service');
+            throw new Error('呼叫 Python 服務失敗');
         }
 
         const result = await response.json();
         return result;
     } catch (error) {
-        console.error('Error calling Python service:', error.message);
+        console.error('呼叫 Python 服務時出錯:', error.message);
         throw error;
     }
 }
@@ -38,14 +38,13 @@ async function sendImageUrlToPythonService(text, imageUrls) {
 export async function POST(request) {
     const { url, text } = await request.json();
 
-    console.log(`Processing URL: ${url}`);
-    console.log(`Processing Text: ${text}`);
+    console.log(`處理 URL: ${url}`);
 
     let browser;
 
     try {
         if (url) {
-            // 处理 URL 的情况
+            // 處理 URL 
             browser = await puppeteer.launch({ headless: true });
             const page = await browser.newPage();
             await page.goto(url, { waitUntil: 'domcontentloaded' });
@@ -58,35 +57,35 @@ export async function POST(request) {
                 return Array.from(document.querySelectorAll('img')).map(img => img.src);
             });
 
-            console.log(`Found image URLs: ${imageUrls}`);
+            console.log(`找到圖片 URL: ${imageUrls}`);
 
-            // 发送文本和图片 URL 到 Python 后端进行处理
+            // 發送文字和圖片 URL 到 Python 進行處理
             const pythonResult = await sendImageUrlToPythonService(content, imageUrls);
 
             const simplifiedPythonResult = {
-                result: pythonResult.result || '未检测到',
+                result: pythonResult.result || '未檢測到',
                 matched_keywords: (pythonResult.matched_keywords || []).map(item => ({
-                    keyword: item.keyword || '无关键词',
-                    type: item.type || '无类型'
+                    keyword: item.keyword || '無關鍵詞',
+                    type: item.type || '無類型'
                 })),
-                FraudRate: pythonResult.FraudRate || 0 // 添加 FraudRate
+                FraudRate: pythonResult.FraudRate || 0 
 
             };
 
-            // 存储到 Firebase
+            // 儲存到 Firebase
             const docRef = await db.collection('Outcome').add({
-                detection_type: 1, // 指示数据来源类型
+                detection_type: 1, // 指示資料來源類型
                 url,
                 content,
-                pythonResult: simplifiedPythonResult, // 确保数据结构简单
+                pythonResult: simplifiedPythonResult, // 確保資料結構簡單
                 timestamp: admin.firestore.FieldValue.serverTimestamp(),
             });
 
-            console.log('Python Result:', pythonResult);
+            console.log('Python 結果:', pythonResult);
 
             const result = {
-                matched_keywords: pythonResult.matched_keywords || [], // 如果 undefined，使用空数组
-                result: pythonResult.result || '未检测到',// 如果 undefined，使用默认值
+                matched_keywords: pythonResult.matched_keywords || [], 
+                result: pythonResult.result || '未檢測到',
                 FraudRate: pythonResult.FraudRate || 0
             };
 
@@ -96,35 +95,35 @@ export async function POST(request) {
                 pythonResult: result,
             });
         } else if (text) {
-            // 处理简讯文本的情况
+            // 處理簡訊
             const imageUrls = []; 
 
-            // 发送文本和图片 URL 到 Python 后端进行处理
+            // 發送文字和圖片 URL 到 Python 進行處理
             const pythonResult = await sendImageUrlToPythonService(text, imageUrls);
 
             const simplifiedPythonResult = {
-                result: pythonResult.result || '未检测到',
+                result: pythonResult.result || '未檢測到',
                 matched_keywords: (pythonResult.matched_keywords || []).map(item => ({
-                    keyword: item.keyword || '无关键词',
-                    type: item.type || '无类型'
+                    keyword: item.keyword || '無關鍵詞',
+                    type: item.type || '無類型'
                 })),
-                FraudRate: pythonResult.FraudRate || 0 // 添加 FraudRate
+                FraudRate: pythonResult.FraudRate || 0 
 
             };
 
-            // 存储到 Firebase
+            // 儲存到 Firebase
             const docRef = await db.collection('Outcome').add({
-                detection_type: 2, // 指示数据来源类型
-                content: text, // 将文本内容存储为 content
-                pythonResult: simplifiedPythonResult, // 确保数据结构简单
+                detection_type: 2, // 指示資料來源類型
+                content: text, 
+                pythonResult: simplifiedPythonResult, // 確保資料結構簡單
                 timestamp: admin.firestore.FieldValue.serverTimestamp(),
             });
 
-            console.log('Python Result:', pythonResult);
+            console.log('Python 結果:', pythonResult);
 
             const result = {
-                matched_keywords: pythonResult.matched_keywords || [], // 如果 undefined，使用空数组
-                result: pythonResult.result || '未检测到', // 如果 undefined，使用默认值
+                matched_keywords: pythonResult.matched_keywords || [],
+                result: pythonResult.result || '未檢測到', 
                 FraudRate: pythonResult.FraudRate || 0
             };
 
@@ -135,18 +134,18 @@ export async function POST(request) {
         } else {
             return NextResponse.json({
                 success: false,
-                message: '请求缺少有效数据'
+                message: '請求缺少有效資料'
             });
         }
     } catch (error) {
-        console.error('处理失败:', error.message);
+        console.error('處理失敗:', error.message);
         return NextResponse.json({ success: false, message: error.message });
     } finally {
         if (browser) {
             try {
                 await browser.close();
             } catch (closeError) {
-                console.error('Failed to close browser:', closeError.message);
+                console.error('關閉瀏覽器失敗:', closeError.message);
             }
         }
     }
