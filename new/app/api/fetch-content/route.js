@@ -75,7 +75,7 @@ export async function POST(request) {
 
             // 存储到 Firebase
             const docRef = await db.collection('Outcome').add({
-                detection_type: 'url', // 指示数据来源类型
+                detection_type: 1, // 指示数据来源类型
                 url,
                 content,
                 pythonResult: simplifiedPythonResult, // 确保数据结构简单
@@ -86,13 +86,12 @@ export async function POST(request) {
 
             const result = {
                 matched_keywords: pythonResult.matched_keywords || [], // 如果 undefined，使用空数组
-                result: pythonResult.result || '未检测到' // 如果 undefined，使用默认值
+                result: pythonResult.result || '未检测到',// 如果 undefined，使用默认值
+                FraudRate: pythonResult.FraudRate || 0
             };
 
             return NextResponse.json({
                 success: true,
-                message: '内容和图片 URL 已成功处理',
-                documentId: docRef.id,
                 content,
                 pythonResult: result,
             });
@@ -115,7 +114,7 @@ export async function POST(request) {
 
             // 存储到 Firebase
             const docRef = await db.collection('Outcome').add({
-                detection_type: 'text', // 指示数据来源类型
+                detection_type: 2, // 指示数据来源类型
                 content: text, // 将文本内容存储为 content
                 pythonResult: simplifiedPythonResult, // 确保数据结构简单
                 timestamp: admin.firestore.FieldValue.serverTimestamp(),
@@ -125,13 +124,12 @@ export async function POST(request) {
 
             const result = {
                 matched_keywords: pythonResult.matched_keywords || [], // 如果 undefined，使用空数组
-                result: pythonResult.result || '未检测到' // 如果 undefined，使用默认值
+                result: pythonResult.result || '未检测到', // 如果 undefined，使用默认值
+                FraudRate: pythonResult.FraudRate || 0
             };
 
             return NextResponse.json({
                 success: true,
-                message: '简讯内容已成功处理',
-                documentId: docRef.id,
                 pythonResult: result,
             });
         } else {
