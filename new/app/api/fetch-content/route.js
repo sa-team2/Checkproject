@@ -63,10 +63,10 @@ export async function POST(request) {
             const pythonResult = await sendImageUrlToPythonService(content, imageUrls);
 
             const simplifiedPythonResult = {
-                result: pythonResult.result || '未檢測到',
-                matched_keywords: (pythonResult.matched_keywords || []).map(item => ({
-                    keyword: item.keyword || '無關鍵詞',
-                    type: item.type || '無類型'
+                FraudResult: pythonResult.result || '未檢測到',
+                Match: (pythonResult.matched_keywords || []).map(item => ({
+                    MatchKeyword: item.keyword || '無關鍵詞',
+                    MatchType: item.type || '無類型'
                 })),
                 FraudRate: pythonResult.FraudRate || 0 
 
@@ -74,11 +74,10 @@ export async function POST(request) {
 
             // 儲存到 Firebase
             const docRef = await db.collection('Outcome').add({
-                detection_type: 1, // 指示資料來源類型
-                url,
-                content,
-                pythonResult: simplifiedPythonResult, // 確保資料結構簡單
-                timestamp: admin.firestore.FieldValue.serverTimestamp(),
+                DetectionType: 1, // 指示資料來源類型
+                Content: content, 
+                PythonResult: simplifiedPythonResult, // 確保資料結構簡單
+                TimeStamp: admin.firestore.FieldValue.serverTimestamp(),
             });
 
             console.log('Python 結果:', pythonResult);
@@ -102,10 +101,10 @@ export async function POST(request) {
             const pythonResult = await sendImageUrlToPythonService(text, imageUrls);
 
             const simplifiedPythonResult = {
-                result: pythonResult.result || '未檢測到',
-                matched_keywords: (pythonResult.matched_keywords || []).map(item => ({
-                    keyword: item.keyword || '無關鍵詞',
-                    type: item.type || '無類型'
+                FraudResult: pythonResult.result || '未檢測到',
+                Match: (pythonResult.matched_keywords || []).map(item => ({
+                    MatchKeyword: item.keyword || '無關鍵詞',
+                    MatchType: item.type || '無類型'
                 })),
                 FraudRate: pythonResult.FraudRate || 0 
 
@@ -114,9 +113,9 @@ export async function POST(request) {
             // 儲存到 Firebase
             const docRef = await db.collection('Outcome').add({
                 DetectionType: 2, // 指示資料來源類型
-                content: text, 
-                pythonResult: simplifiedPythonResult, // 確保資料結構簡單
-                timestamp: admin.firestore.FieldValue.serverTimestamp(),
+                Content: text, 
+                PythonResult: simplifiedPythonResult, // 確保資料結構簡單
+                TimeStamp: admin.firestore.FieldValue.serverTimestamp(),
             });
 
             console.log('Python 結果:', pythonResult);
