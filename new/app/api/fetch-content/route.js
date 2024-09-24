@@ -77,6 +77,7 @@ export async function POST(request) {
                 DetectionType: 1, // 指示資料來源類型
                 Content: content, 
                 PythonResult: simplifiedPythonResult, // 確保資料結構簡單
+                URL:url,
                 TimeStamp: admin.firestore.FieldValue.serverTimestamp(),
             });
 
