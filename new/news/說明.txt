@@ -1,0 +1,7 @@
+先回到new資料夾安裝以下套件：
+npm install cors
+npm install cheerio
+
+安裝完成後再進到news資料夾
+
+輸入 node news.js 啟動
