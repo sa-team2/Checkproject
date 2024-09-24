@@ -113,7 +113,7 @@ export async function POST(request) {
 
             // 儲存到 Firebase
             const docRef = await db.collection('Outcome').add({
-                detection_type: 2, // 指示資料來源類型
+                DetectionType: 2, // 指示資料來源類型
                 content: text, 
                 pythonResult: simplifiedPythonResult, // 確保資料結構簡單
                 timestamp: admin.firestore.FieldValue.serverTimestamp(),
