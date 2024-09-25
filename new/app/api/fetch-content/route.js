@@ -80,6 +80,8 @@ export async function POST(request) {
                 URL:url,
                 TimeStamp: admin.firestore.FieldValue.serverTimestamp(),
             });
+            const ID = docRef.id;
+
 
             console.log('Python 結果:', pythonResult);
 
@@ -90,6 +92,7 @@ export async function POST(request) {
             };
 
             return NextResponse.json({
+                ID:ID,
                 success: true,
                 content,
                 pythonResult: result,
@@ -118,8 +121,10 @@ export async function POST(request) {
                 PythonResult: simplifiedPythonResult, // 確保資料結構簡單
                 TimeStamp: admin.firestore.FieldValue.serverTimestamp(),
             });
+            const ID = docRef.id;
 
             console.log('Python 結果:', pythonResult);
+            
 
             const result = {
                 matched_keywords: pythonResult.matched_keywords || [],
@@ -128,6 +133,7 @@ export async function POST(request) {
             };
 
             return NextResponse.json({
+                ID:ID,
                 success: true,
                 pythonResult: result,
             });
