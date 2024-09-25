@@ -218,10 +218,17 @@ def predict():
     scores = [ocsvm.decision_function(new_sample_pca)[0] for ocsvm in ocsvm_models]
     probabilities = sigmoid(np.array(scores))
 
+    # 设置置信度阈值
+    confidence_threshold = 0.6  # 假设我们使用60%置信度作为阈值
+
     # 计算平均置信度百分比
     avg_confidence_percentage = np.mean(probabilities) * 100
 
-    result = "非詐騙" if any(pred == 1 for pred in predictions) else "詐騙"
+    # 判断是否达到阈值
+    if any(prob >= confidence_threshold for prob in probabilities):
+        result = "非詐騙"  # 如果至少有一个模型的置信度达到阈值，则判断为非诈骗
+    else:
+        result = "詐騙"  # 如果所有模型的置信度都低于阈值，则判断为诈骗
 
     return jsonify({
         'result': result,
@@ -229,6 +236,7 @@ def predict():
         'ocr_results': ocr_results if image_urls else {},  # 仅当有 image_urls 时返回 OCR 结果
         'FraudRate': avg_confidence_percentage  # 返回平均置信度百分比
     })
+
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
