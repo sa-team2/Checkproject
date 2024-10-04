@@ -165,7 +165,7 @@ export async function POST(request) {
                     console.log('检测到图片文件，发送到 Python 服务处理');
                     const fs = require('fs');
                     const path = require('path');
-                    const filePath = path.resolve(__dirname, `C:\\Users\\a0311\\OneDrive\\桌面\\專題\\new\\new\\uploads`, uploadedFileName); // 设置文件存储路径
+                    const filePath = path.resolve(__dirname, `../../../../../uploads`, uploadedFileName); // 设置文件存储路径
                     console.log(__dirname); // 查看當前目錄
 
                     fs.writeFileSync(filePath, Buffer.from(uploadedFileBuffer)); // 写入文件
