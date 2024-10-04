@@ -14,7 +14,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 app = Flask(__name__)
 
 # 初始化 Firebase
-cred = credentials.Certificate('../config/dayofftest1-firebase-adminsdk-xfpl4-23ed2646dd.json')  # 替换为你的 Firebase 服务密钥路径
+cred = credentials.Certificate('../config/dayofftest1-firebase-adminsdk-xfpl4-f64d9dc336.json')  # 替换为你的 Firebase 服务密钥路径
 firebase_admin.initialize_app(cred)
 db = firestore.client()
 
@@ -129,6 +129,20 @@ def download_image_from_url(image_url):
     except Exception as e:
         print(f"Failed to download or decode image {image_url}: {e}")
         return None
+    
+
+def load_image_from_path(image_url):
+    """从本地路径加载图像并转为 OpenCV 格式"""
+    try:
+        image = cv2.imdecode(np.fromfile(image_url, dtype=np.uint8), -1)
+        if image is None:
+            raise Exception(f"Failed to load image from path: {image_url}")
+        return image
+    except Exception as e:
+        print(f"Error loading image from local path: {e}")
+        raise  # 抛出异常，便于更好地调试
+
+
 
 # 增強圖片
 def enhance_image(image, scale_factor=4.0):
@@ -164,6 +178,11 @@ def sigmoid(x):
     """Sigmoid 激活函数"""
     return 1 / (1 + np.exp(-x))
 
+def is_url(path):
+    """判断传递的路径是否为 URL"""
+    return path.startswith(('http://', 'https://'))
+
+
 # 主預測函数
 @app.route('/predict', methods=['POST'])
 def predict():
@@ -179,16 +198,20 @@ def predict():
         ocr_results = {}
 
         for image_url in image_urls:
-            if image_url in processed_urls:
+            if (image_url in processed_urls) and is_url(image_url):
                 print(f"Skipping already processed URL: {image_url}")
                 continue
             processed_urls.add(image_url)
 
             try:
-                image = download_image_from_url(image_url)
+                if is_url(image_url):
+                # 处理 URL
+                    image = download_image_from_url(image_url)
+                else:
+                    image = load_image_from_path(image_urls)  # 加载本地文件
+
                 if image is None:
                     continue
-
                 enhanced_image = enhance_image(image)
                 ocr_data = perform_ocr(enhanced_image)
                 ocr_text = extract_text_from_ocr(ocr_data)
@@ -199,8 +222,13 @@ def predict():
                 print(f"Failed to process image {image_url}: {e}")
                 ocr_results[image_url] = str(e)
 
-        # 將 OCR 文本和輸入文本合並
-        combined_text = input_text + ' ' + ' '.join(ocr_texts)
+            if (is_url(image_url)==False):
+                break
+
+
+    # 將 OCR 文本和輸入文本合並
+    combined_text = input_text + ' ' + ' '.join(ocr_texts)
+
 
     # 获取 Firebase 中的关键字和类型
     keywords_data = get_keywords_from_firebase()
@@ -219,22 +247,24 @@ def predict():
     probabilities = sigmoid(np.array(scores))
 
     # 设置置信度阈值
-    confidence_threshold = 0.6  # 假设我们使用60%置信度作为阈值
+    # confidence_threshold = 0.6  # 假设我们使用60%置信度作为阈值
+
+    fraud_probability = 1 - np.mean(probabilities)  # 反转信任度为诈骗概率
 
     # 计算平均置信度百分比
-    avg_confidence_percentage = np.mean(probabilities) * 100
+    avg_fraud_percentage = fraud_probability * 100
 
-    # 判断是否达到阈值
-    if any(prob >= confidence_threshold for prob in probabilities):
-        result = "非詐騙"  # 如果至少有一个模型的置信度达到阈值，则判断为非诈骗
-    else:
-        result = "詐騙"  # 如果所有模型的置信度都低于阈值，则判断为诈骗
+    # # 判断是否达到阈值
+    # if any(prob >= confidence_threshold for prob in probabilities):
+    #     result = "非詐騙"  # 如果至少有一个模型的置信度达到阈值，则判断为非诈骗
+    # else:
+    #     result = "詐騙"  # 如果所有模型的置信度都低于阈值，则判断为诈骗
 
     return jsonify({
-        'result': result,
+        'result': '詐騙' if avg_fraud_percentage >= 50 else '非詐騙',  # 超过50%即为詐騙
         'matched_keywords': matched_keywords,  # 返回匹配的关键字和类型
         'ocr_results': ocr_results if image_urls else {},  # 仅当有 image_urls 时返回 OCR 结果
-        'FraudRate': avg_confidence_percentage  # 返回平均置信度百分比
+        'FraudRate': avg_fraud_percentage  # 返回平均置信度百分比
     })
 
 
