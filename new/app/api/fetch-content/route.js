@@ -165,8 +165,9 @@ export async function POST(request) {
                     console.log('检测到图片文件，发送到 Python 服务处理');
                     const fs = require('fs');
                     const path = require('path');
-                    const filePath = path.join(__dirname, '../../../uploads', uploadedFileName); // 设置文件存储路径
-                
+                    const filePath = path.resolve(__dirname, `C:\\Users\\a0311\\OneDrive\\桌面\\專題\\new\\new\\uploads`, uploadedFileName); // 设置文件存储路径
+                    console.log(__dirname); // 查看當前目錄
+
                     fs.writeFileSync(filePath, Buffer.from(uploadedFileBuffer)); // 写入文件
                     console.log(`文件已保存至: ${filePath}`);
                 
@@ -176,7 +177,7 @@ export async function POST(request) {
                     // 处理完后删除文件
                     fs.unlinkSync(filePath); // 删除文件
                     console.log(`文件已删除: ${filePath}`);
-                    console.log(pythonResult.ocr_result);
+                    console.log(pythonResult.ocr_results);
 
                     const simplifiedPythonResult = {
                         FraudResult: pythonResult.result || '未检测到',
@@ -190,7 +191,6 @@ export async function POST(request) {
                     const docRef = await db.collection('Outcome').add({
                         DetectionType: 4, // 代表图片上传
                         PythonResult: simplifiedPythonResult,
-                        ImageUrl: imageUrls[0], // 存储图片的 URL
                         TimeStamp: admin.firestore.FieldValue.serverTimestamp(),
                     });
     
@@ -200,7 +200,7 @@ export async function POST(request) {
                     return NextResponse.json({
                         ID,
                         success: true,
-                        pythonResult: simplifiedImageResult,
+                        pythonResult: simplifiedPythonResult,
                     });
 
                 } else if (mimeType.startsWith('text/')) {
