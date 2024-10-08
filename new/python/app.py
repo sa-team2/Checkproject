@@ -226,8 +226,8 @@ def predict():
                 break
 
 
-    # 將 OCR 文本和輸入文本合並
-    combined_text = input_text + ' ' + ' '.join(ocr_texts)
+            # 將 OCR 文本和輸入文本合並
+            combined_text = input_text + ' ' + ' '.join(ocr_texts)
 
 
     # 获取 Firebase 中的关键字和类型
