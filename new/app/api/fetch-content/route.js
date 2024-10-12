@@ -3,8 +3,11 @@ import puppeteer from 'puppeteer';
 import fetch from 'node-fetch';
 import admin from 'firebase-admin';
 import serviceAccount from '../../../config/dayofftest1-firebase-adminsdk-xfpl4-f64d9dc336.json';
-import fs from 'fs/promises'; // 用于读取文件内容
+import fs from 'fs'; // 用于读取文件内容
 import mime from 'mime-types'; // 用于检测文件的 MIME 类型
+import { spawn } from 'child_process'; // 引入 spawn
+import path from 'path'; // 引入 path
+import multer from 'multer'; // 引入 multer
 
 // 初始化 Firebase Admin SDK
 if (!admin.apps.length) {
@@ -55,6 +58,7 @@ export async function POST(request) {
     try {
         // 解析请求中的文件和其他数据
         const contentType = request.headers.get('content-type');
+        console.log(contentType);
 
         if (contentType.includes('application/json')) {
             // 处理 JSON 请求
@@ -107,7 +111,7 @@ export async function POST(request) {
 
             // 处理文本信息
             } else if (text) {
-                console.log('处理文本信息');
+                console.log('处理文本信息',text);
                 const imageUrls = []; // 没有图片时传递空列表
                 const pythonResult = await sendImageUrlToPythonService(text, imageUrls);
 
@@ -160,14 +164,14 @@ export async function POST(request) {
             console.log(`文件 MIME 类型: ${mimeType}`);
 
             if (typeof mimeType === 'string') {
+                const fs = require('fs');
+                const path = require('path');
                 // 如果是图片文件，直接发送给 Python 服务处理
                 if (mimeType.startsWith('image/')) {
                     console.log('检测到图片文件，发送到 Python 服务处理');
-                    const fs = require('fs');
-                    const path = require('path');
                     const filePath = path.resolve(__dirname, `../../../../../uploads`, uploadedFileName); // 设置文件存储路径
                     console.log(__dirname); // 查看當前目錄
-
+                
                     fs.writeFileSync(filePath, Buffer.from(uploadedFileBuffer)); // 写入文件
                     console.log(`文件已保存至: ${filePath}`);
                 
@@ -178,7 +182,7 @@ export async function POST(request) {
                     fs.unlinkSync(filePath); // 删除文件
                     console.log(`文件已删除: ${filePath}`);
                     console.log(pythonResult.ocr_results);
-
+                
                     const simplifiedPythonResult = {
                         FraudResult: pythonResult.result || '未检测到',
                         Match: (pythonResult.matched_keywords || []).map(item => ({
@@ -187,30 +191,29 @@ export async function POST(request) {
                         })),
                         FraudRate: pythonResult.FraudRate || 0,
                     };
-    
+                
                     const docRef = await db.collection('Outcome').add({
                         DetectionType: 4, // 代表图片上传
                         PythonResult: simplifiedPythonResult,
                         TimeStamp: admin.firestore.FieldValue.serverTimestamp(),
                     });
-    
+                
                     const ID = docRef.id;
-    
-
+                
                     return NextResponse.json({
                         ID,
                         success: true,
                         pythonResult: simplifiedPythonResult,
                     });
-
+                
                 } else if (mimeType.startsWith('text/')) {
                     // 如果是文本文件，读取文件内容并发送给 Python 服务
                     const text = await readFileContent(Buffer.from(uploadedFileBuffer));
                     console.log(`读取到的文本内容: ${text}`);
-
+                
                     const imageUrls = []; // 没有图片时传递空列表
                     const pythonResult = await sendImageUrlToPythonService(text, imageUrls);
-
+                
                     const simplifiedPythonResult = {
                         FraudResult: pythonResult.result || '未检测到',
                         Match: (pythonResult.matched_keywords || []).map(item => ({
@@ -219,7 +222,7 @@ export async function POST(request) {
                         })),
                         FraudRate: pythonResult.FraudRate || 0,
                     };
-
+                
                     // 保存到 Firebase
                     const docRef = await db.collection('Outcome').add({
                         DetectionType: 3,
@@ -227,21 +230,67 @@ export async function POST(request) {
                         PythonResult: simplifiedPythonResult,
                         TimeStamp: admin.firestore.FieldValue.serverTimestamp(),
                     });
-
+                
                     const ID = docRef.id;
-
+                
                     return NextResponse.json({
                         ID,
                         success: true,
                         pythonResult: simplifiedPythonResult,
                     });
+                
+                } else if (mimeType === 'application/vnd.ms-excel' || mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') {
+                    // 如果是 Excel 文件，解析 Excel 内容并发送给 Python 服务
+                    console.log('检测到 Excel 文件，正在处理');
+                
+                    // 指定保存的文件夹路径
+                    const filePath = path.resolve(__dirname, `../../../../../uploads`, uploadedFileName); // 设置文件存储路径
+                    fs.writeFileSync(filePath, Buffer.from(uploadedFileBuffer)); // 写入文件
+                    console.log(`文件已保存至: ${filePath}`);
 
+                    const pythonProcess = spawn('python', ['schedule_update.py', filePath], {  // 将 filePath 传递给 Python 脚本
+                        cwd: path.join(__dirname, '../../../../../python') // 设置工作目录为 Python 脚本所在的文件夹
+                    });
+                    pythonProcess.stdout.on('data', (data) => {
+                        console.log(`Python 输出: ${data.toString()}`); // 打印 Python 输出的内容
+                    });
+                    
+                                    pythonProcess.stderr.on('data', (data) => {
+                        console.error(`Python 错误: ${data}`);
+                    });
+                    console.log(`Python已執行`);
+                                
+                    const simplifiedPythonResult = {
+                        FraudResult: pythonResult.result || '未检测到',
+                        Match: (pythonResult.matched_keywords || []).map(item => ({
+                            MatchKeyword: item.keyword || '无关键词',
+                            MatchType: item.type || '无类型',
+                        })),
+                        FraudRate: pythonResult.FraudRate || 0,
+                    };
+                
+                    // 保存到 Firebase
+                    const docRef = await db.collection('Outcome').add({
+                        DetectionType: 5, // 代表 Excel 文件
+                        PythonResult: simplifiedPythonResult,
+                        TimeStamp: admin.firestore.FieldValue.serverTimestamp(),
+                    });
+                
+                    const ID = docRef.id;
+                
+                    return NextResponse.json({
+                        ID,
+                        success: true,
+                        pythonResult: simplifiedPythonResult,
+                    });
+                
                 } else {
                     return NextResponse.json({
                         success: false,
                         message: '不支持的文件类型',
                     });
                 }
+                
             } else {
                 return NextResponse.json({
                     success: false,
@@ -249,6 +298,7 @@ export async function POST(request) {
                 });
             }
         }
+
 
     } catch (error) {
         console.error('处理失败:', error.message);
@@ -263,3 +313,4 @@ export async function POST(request) {
         }
     }
 }
+
