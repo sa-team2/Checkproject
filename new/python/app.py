@@ -97,7 +97,7 @@ def match_keywords(text, keywords_data):
 
     return matched
 
-def predict_fraud_types(keywords, top_n=1):
+def predict_fraud_types(keywords):
     """使用 BERT 模型预测关键词的类型"""
     global fraud_type_embeddings  # 已有的诈骗类型嵌入
 
@@ -274,11 +274,8 @@ def predict():
     
 
     # 获取 Firebase 中的关键字和类型
-    from transformers import BertTokenizer, BertModel
-    import torch
-    from sklearn.decomposition import PCA
-    def encode_with_bert(data):
     
+    def encode_with_bert(data):
         inputs = tokenizer(data, padding=True, truncation=True, return_tensors="pt", max_length=128)
         with torch.no_grad():  # 不需要反向传播
             outputs = model_type(**inputs)
@@ -293,38 +290,26 @@ def predict():
     tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
     model_type = BertModel.from_pretrained('bert-base-uncased')
 
-    X_bert_new = encode_with_bert([combined_text])
-    # 使用模型进行预测
-    new_sample_vector = vectorizer.transform([combined_text]).toarray()
+    keywords_data = get_keywords_from_firebase()
+    matched_keywords = match_keywords(combined_text, keywords_data)
 
-    combined_features = np.concatenate((new_sample_vector, X_bert_new), axis=1)
+    bert_embedding = get_bert_embedding(combined_text)
+    new_sample_vector = vectorizer.transform([combined_text]).toarray()
+    combined_features = np.concatenate((new_sample_vector, bert_embedding), axis=1)
     new_sample_scaled = scaler.transform(combined_features)
     new_sample_pca = pca.transform(new_sample_scaled)
 
-    # 获取每个模型的预测结果和置信度
-    predictions = [ocsvm.predict(new_sample_pca)[0] for ocsvm in ocsvm_models]
     scores = [ocsvm.decision_function(new_sample_pca)[0] for ocsvm in ocsvm_models]
     probabilities = sigmoid(np.array(scores))
-
-    # 设置置信度阈值
-    # confidence_threshold = 0.6  # 假设我们使用60%置信度作为阈值
-
-    fraud_probability = 1 - np.mean(probabilities)  # 反转信任度为诈骗概率
-
-    # 计算平均置信度百分比
-    avg_fraud_percentage = fraud_probability * 100
-
-    # # 判断是否达到阈值
-    # if any(prob >= confidence_threshold for prob in probabilities):
-    #     result = "非詐騙"  # 如果至少有一个模型的置信度达到阈值，则判断为非诈骗
-    # else:
-    #     result = "詐騙"  # 如果所有模型的置信度都低于阈值，则判断为诈骗
+    fraud_probability = (1 - np.mean(probabilities)) * 100
+    print(fraud_probability)
+   
 
     return jsonify({
-        'result': '詐騙' if avg_fraud_percentage >= 50 else '非詐騙',  # 超过50%即为詐騙
+        'result': '詐騙' if fraud_probability >= 50 else '非詐騙',  # 超过50%即为詐騙
         'matched_keywords': matched_keywords, # 返回匹配的关键字和类型
         'ocr_results': ocr_results if image_urls else {},  # 仅当有 image_urls 时返回 OCR 结果
-        'FraudRate': avg_fraud_percentage  # 返回平均置信度百分比
+        'FraudRate': fraud_probability  # 返回平均置信度百分比
     })
 
 
