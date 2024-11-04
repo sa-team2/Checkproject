@@ -78,7 +78,7 @@ def update_model():
 
     # KMeans 聚类
     silhouette_scores = []
-    for n_clusters in range(2, 20):
+    for n_clusters in range(2, 10):
         kmeans = KMeans(n_clusters=n_clusters, random_state=42)
         clusters = kmeans.fit_predict(X_pca)
         score = silhouette_score(X_pca, clusters)
@@ -93,7 +93,7 @@ def update_model():
     ocsvm_models = []
     for cluster in set(clusters):
         X_cluster = X_pca[clusters == cluster]
-        ocsvm = OneClassSVM(kernel='rbf', nu=0.1, gamma='auto')
+        ocsvm = OneClassSVM(kernel='rbf', nu=0.4, gamma='scale')
         ocsvm.fit(X_cluster)
         ocsvm_models.append(ocsvm)
 
@@ -109,38 +109,36 @@ def update_model():
 #以下是判斷類型的模型
     # -------------------------------------------------------------
 
-    # 初始化 BERT 模型和 Tokenizer
-        tokenizer = BertTokenizer.from_pretrained('bert-base-chinese', clean_up_tokenization_spaces=False)
-        model_type = BertModel.from_pretrained('bert-base-chinese')
+def update_model2():
+    # 加载 BERT Tokenizer 和 Model
+    tokenizer = BertTokenizer.from_pretrained('bert-base-chinese', clean_up_tokenization_spaces=False)
+    model_type = BertModel.from_pretrained('bert-base-chinese')
 
-        # 定义诈骗类型及其描述
-        fraud_type_descriptions = {
-            "購物金融詐騙": "詐騙者以購物交易為名，聲稱買賣過程中出現金流錯誤，誘騙受害者通過匯款或ATM操作支付款項。。",
-            "投資詐騙": "詐騙者承諾高回報、無風險的投資項目。",
-            "身分盜用": "非法獲取並使用個人身份資訊的詐騙。",
-            "求職詐騙": "誘騙求職者支付保證金或提供個人敏感資料。",
-            "假冒名義": "詐騙者假冒政府機構或公司要求信息或付款。",
-            "資金貸款": "詐騙者提供虛假貸款，要求提前支付保證金。",
-            "交友戀愛詐騙": "詐騙者偽裝成伴侶，誘騙受害者提供金錢援助。",
-            "免費詐騙":"詐騙者以免費贈品、免費服務等，吸引受害者填寫個人訊息。詐騙者還可能在「贈品」發送前要求支付運費或其他費用，實際上卻沒有任何免費商品提供。",
-        }
+    # 从 Firestore 获取诈骗类型及描述
+    def fraud_type_descriptions():
+        descriptions = {}
+        docs = db.collection('Statistics').stream()
+        for doc in docs:
+            data = doc.to_dict()
+            descriptions[data['Type']] = data['Define']
+        return descriptions
 
-        # 获取文本的 BERT 嵌入
-        def get_embedding(text):
-            inputs = tokenizer(text, return_tensors='pt', truncation=True, padding=True, max_length=128)
-            with torch.no_grad():
-                outputs = model_type(**inputs)
-            return outputs.last_hidden_state.mean(dim=1).numpy()
+    # 获取文本的 BERT 嵌入
+    def get_embedding(text):
+        inputs = tokenizer(text, return_tensors='pt', truncation=True, padding=True, max_length=128)
+        with torch.no_grad():
+            outputs = model_type(**inputs)
+        return outputs.last_hidden_state.mean(dim=1).numpy()
 
-        # 计算所有诈骗类型描述的嵌入
-        fraud_type_embeddings = {key: get_embedding(desc) for key, desc in fraud_type_descriptions.items()}
+    # 获取所有诈骗类型描述并计算其嵌入
+    fraud_type_embeddings = {key: get_embedding(desc) for key, desc in fraud_type_descriptions().items()}
 
-        # 保存模型和嵌入
-        torch.save({
-            'model_state_dict': model_type.state_dict(),
-            'fraud_type_embeddings': fraud_type_embeddings
-        }, 'bert_fraud_model.pth')
-
+    # 保存模型状态和嵌入
+    torch.save({
+        'model_state_dict': model_type.state_dict(),
+        'fraud_type_embeddings': fraud_type_embeddings
+    }, 'bert_fraud_model.pth')
 
 if __name__ == "__main__":
     update_model()
+    update_model2()
