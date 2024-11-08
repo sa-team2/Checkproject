@@ -41,6 +41,32 @@ async function sendImageUrlToPythonService(text, imageUrls) {
     }
 }
 
+async function UrlContent(url) {
+    console.log(`处理 URL: ${url}`);
+    const browser = await puppeteer.launch({ headless: true });
+    const page = await browser.newPage();
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    
+    // 获取页面文本内容
+    const content = await page.evaluate(() => document.body.innerText);
+    
+    // 获取所有图片的 URL
+    const imageUrls = await page.evaluate(() =>
+        Array.from(document.querySelectorAll('img')).map(img => img.src)
+    );
+    
+    console.log(`找到图片 URL: ${imageUrls}`);
+    await browser.close();
+    
+    return { content, imageUrls };
+}
+
+
+
+
+
+
+
 async function readFileContent(buffer) {
     return buffer.toString('utf-8');
 }
@@ -63,19 +89,14 @@ async function saveToFirestore(detectionType, content, pythonResult) {
 
 
 async function processPythonResult(pythonResult) {
-    // 使用 for...of 循环，确保每个处理步骤是同步顺序的
-    const matches = [];
-    for (const item of (pythonResult.matched_keywords || [])) {
-        const fraudTypeDetails = await getFraudTypeDetails(item.type);
-        matches.push({
-            MatchKeyword: item.keyword || '无关键词',
-            MatchType: item.type || '无类型',
-            Remind: fraudTypeDetails.Remind,
-            Prevent: fraudTypeDetails.Prevent,
-        });
-    }
+    // 直接构造返回对象
+    const matches = (pythonResult.matched_keywords || []).map(item => ({
+        MatchKeyword: item.keyword || '无关键词',
+        MatchType: item.type || '无类型',
+        Remind: item.Remind || '',
+        Prevent: item.Prevent || '',
+    }));
 
-    // 构造返回对象
     const simplifiedPythonResult = {
         FraudResult: pythonResult.result || '未检测到',
         FraudRate: pythonResult.FraudRate || 0,
@@ -128,18 +149,8 @@ export async function POST(request) {
             const { url, text } = json;
 
             if (url) {
-                console.log(`处理 URL: ${url}`);
-                browser = await puppeteer.launch({ headless: true });
-                const page = await browser.newPage();
-                await page.goto(url, { waitUntil: 'domcontentloaded' });
-
-                const content = await page.evaluate(() => document.body.innerText);
-                const imageUrls = await page.evaluate(() =>
-                    Array.from(document.querySelectorAll('img')).map(img => img.src)
-                );
-
-                console.log(`找到图片 URL: ${imageUrls}`);
-                const pythonResult = await sendImageUrlToPythonService(content, imageUrls);
+                const result = await UrlContent(url);
+                const pythonResult = await sendImageUrlToPythonService(result.content, result.imageUrls);
                 const simplifiedPythonResult = await processPythonResult(pythonResult);
                 const ID = await saveToFirestore(1, content, simplifiedPythonResult);
 
@@ -147,20 +158,42 @@ export async function POST(request) {
                     ID, content, pythonResult: simplifiedPythonResult
                 });
 
-            } else if (text) {
-                console.log('处理文本信息', text);
-                const pythonResult = await sendImageUrlToPythonService(text, []);
+            } 
+            
+            else if (text) {
+                // 檢查 text 裡是否包含 URL
+                const urlPattern = /(https?:\/\/[^\s]+)/g;
+                const containsUrl = urlPattern.test(text);
+                const urls = text.match(urlPattern); 
+                let pythonResult;
+                let allContent = text;          // 用于收集所有文本内容
+                let allImageUrls = [];        // 用于收集所有图片链接
+                if (containsUrl) {
+                    console.log('处理文本信息', text);
+                    for (const url of urls) {
+                        const result = await UrlContent(url); // 每个 URL 传入 scrapeUrlContent
+                        allContent += result.content + '\n';       
+                        allImageUrls = allImageUrls.concat(result.imageUrls);  // 合并图片链接数组
+                    }
+                    pythonResult = await sendImageUrlToPythonService(allContent, allImageUrls);
+                    
+                } else {
+                    console.log('处理文本信息', text);
+                    pythonResult = await sendImageUrlToPythonService(text, []);
+                    
+                }
                 const simplifiedPythonResult = await processPythonResult(pythonResult);
                 const ID = await saveToFirestore(2, text, simplifiedPythonResult);
-
+            
                 return createResponse(true, { ID, pythonResult: simplifiedPythonResult });
             }
+            
 
         } else if (contentType.includes('multipart/form-data')) {
             const formData = await request.formData();
             const file = formData.get('file');
             const uploadedFileBuffer = await file.arrayBuffer();
-            const uploadedFileName = file.name;
+            const uploadedFileName = file.name; 
 
             console.log(`处理上传文件: ${uploadedFileName}`);
             const mimeType = mime.lookup(uploadedFileName);
