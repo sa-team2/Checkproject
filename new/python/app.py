@@ -16,9 +16,12 @@ import numpy as np
 app = Flask(__name__)
 
 # 初始化 Firebase
-cred = credentials.Certificate('../config/dayofftest1-firebase-adminsdk-xfpl4-23ed2646dd.json')  # 替换为你的 Firebase 服务密钥路径
-firebase_admin.initialize_app(cred)
-db = firestore.client()
+cred = credentials.Certificate('../config/dayofftest1-firebase-adminsdk-xfpl4-f64d9dc336.json')
+firebase_admin.initialize_app(cred , name='app')
+fapp = firebase_admin.get_app('app')  # 確保使用已初始化的 'app' 實例
+db = firestore.client(fapp)  # 使用這個實例連接 Firestore
+
+from check_text import check_text_for_lineid_and_url
 
 # 初始化 Tokenizer
 tokenizer = BertTokenizer.from_pretrained('bert-base-chinese', clean_up_tokenization_spaces=False)
@@ -61,9 +64,14 @@ processed_urls = set()
 
 DEFAULT_TYPE = "未知"  # 默认类型
 
-def get_keywords_from_firebase():
-    """從 Firebase 的 FraudDefine 集合中獲取關鍵字和類型"""
+import asyncio
+
+def get_and_match_keywords_with_details(text):
+    """从 Firebase 获取关键字和类型，匹配或预测文本中的关键字及其类型，并获取 Remind 和 Prevent 信息"""
+    matched = []
     keywords_data = []
+
+    # 从 Firebase 获取关键字和类型
     try:
         keywords_ref = db.collection('FraudDefine')
         docs = keywords_ref.stream()
@@ -76,26 +84,45 @@ def get_keywords_from_firebase():
                 })
     except Exception as e:
         print(f"Failed to fetch keywords from Firebase: {e}")
-    return keywords_data
+        return matched
 
-def match_keywords(text, keywords_data):
-    """匹配或预测文本中的关键字及其类型"""
+    # 匹配关键字
     matched = [
         {'keyword': kd['keyword'], 'type': kd['type']}
         for kd in keywords_data if kd['keyword'] in text
     ]
 
-    if not matched:  # 如果没有匹配到关键字
+    # 如果没有匹配到关键字，则进行预测
+    if not matched:
         suspicious_keywords = find_suspicious_keywords(text, keywords_data)
         predicted_types = predict_fraud_types([kw for kw, _ in suspicious_keywords])
-        
-        # 如果预测失败，返回默认类型
+
         matched.extend({
-            'keyword': kw, 
+            'keyword': kw,
             'type': pt if pt else DEFAULT_TYPE
         } for kw, pt in predicted_types)
 
+    # 获取每个匹配或预测的关键字类型的 Remind 和 Prevent 信息
+    for item in matched:
+        try:
+            snapshot = db.collection('Statistics').where('Type', '==', item['type']).stream()
+            doc = next(snapshot, None)  # 获取第一个匹配文档，若没有则返回 None
+
+            if doc:
+                data = doc.to_dict()
+                item['Remind'] = data.get('Remind', '')
+                item['Prevent'] = data.get('Prevent', '')
+            else:
+                item['Remind'] = ''
+                item['Prevent'] = ''
+        except Exception as e:
+            print(f"查询 Statistics 集合时出错: {e}")
+            item['Remind'] = ''
+            item['Prevent'] = ''
+
     return matched
+
+
 
 def predict_fraud_types(keywords):
     """使用 BERT 模型预测关键词的类型"""
@@ -122,9 +149,13 @@ def predict_fraud_types(keywords):
 
 def get_bert_embedding(text): 
     """通过 BERT 获取文本的嵌入向量"""
-    inputs = tokenizer(text, return_tensors='pt')
+    # Tokenize the text with padding, truncation, and max length of 128 tokens
+    inputs = tokenizer(text, return_tensors='pt', padding=True, truncation=True, max_length=128, add_special_tokens=True)
     outputs = model_type(**inputs)
+    
     return outputs.last_hidden_state.mean(dim=1).detach().numpy()
+
+
 
 def find_suspicious_keywords(text, keywords_data):
     """使用 TF-IDF 提取最可疑关键词"""
@@ -272,45 +303,69 @@ def predict():
 
     # 將 OCR 文本和輸入文本合並
     
+    modified_text, lineid_data, url_data = check_text_for_lineid_and_url(combined_text)
 
-    # 获取 Firebase 中的关键字和类型
+    if not lineid_data and not url_data:
+
+
+        matched_keywords = get_and_match_keywords_with_details(combined_text)
+
+        bert_embedding = get_bert_embedding(combined_text)
+        new_sample_vector = vectorizer.transform([combined_text]).toarray()
+        combined_features = np.concatenate((new_sample_vector, bert_embedding), axis=1)
+        new_sample_scaled = scaler.transform(combined_features)
+        new_sample_pca = pca.transform(new_sample_scaled)
+
+        scores = [ocsvm.decision_function(new_sample_pca)[0] for ocsvm in ocsvm_models]
+        probabilities = sigmoid(np.array(scores))
+        fraud_probability = (1 - np.mean(probabilities)) * 100
+        print(fraud_probability)
     
-    def encode_with_bert(data):
-        inputs = tokenizer(data, padding=True, truncation=True, return_tensors="pt", max_length=128)
-        with torch.no_grad():  # 不需要反向传播
-            outputs = model_type(**inputs)
-        embeddings = torch.mean(outputs.last_hidden_state, dim=1)  # 平均池化
-        return embeddings.cpu().numpy()
 
-    keywords_data = get_keywords_from_firebase()
+        return jsonify({
+            'result': '詐騙' if fraud_probability >= 50 else '非詐騙',  # 超过50%即为詐騙
+            'matched_keywords': matched_keywords, # 返回匹配的关键字和类型
+            'ocr_results': ocr_results if image_urls else {},  # 仅当有 image_urls 时返回 OCR 结果
+            'FraudRate': fraud_probability  # 返回平均置信度百分比
+        })
+    else:
+        # 构建 matched_keywords 列表，包含匹配的关键字和类型
+        matched_keywords = []
+        if lineid_data:
+            for lineid_data in lineid_data:
+                matched_keywords.append({
+                    'keyword': lineid_data.get('LineID', '无 LineID'),
+                    'type': lineid_data.get('Type', '无类型'),
+                    'Remind': lineid_data.get('GoverURL', '无 GoverURL'),
+                    'Prevent': lineid_data.get('Prevent', '无 Prevent')
 
-    # 匹配关键字
-    matched_keywords = match_keywords(combined_text, keywords_data)
+                })
+            
 
-    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
-    model_type = BertModel.from_pretrained('bert-base-uncased')
+        if url_data:
+            # 假设 url_info 是从 check_text_for_lineid_and_url 函数中得到的
+            for url_data in url_data:
+                matched_keywords.append({
+                    'keyword': url_data.get('url', '无 URL'),
+                    'type': url_data.get('Type', '无类型'),
+                    'Remind': url_data.get('GoverURL', '无 GoverURL'),
+                    'Prevent': url_data.get('Prevent', '无 Prevent')
 
-    keywords_data = get_keywords_from_firebase()
-    matched_keywords = match_keywords(combined_text, keywords_data)
+                })
 
-    bert_embedding = get_bert_embedding(combined_text)
-    new_sample_vector = vectorizer.transform([combined_text]).toarray()
-    combined_features = np.concatenate((new_sample_vector, bert_embedding), axis=1)
-    new_sample_scaled = scaler.transform(combined_features)
-    new_sample_pca = pca.transform(new_sample_scaled)
 
-    scores = [ocsvm.decision_function(new_sample_pca)[0] for ocsvm in ocsvm_models]
-    probabilities = sigmoid(np.array(scores))
-    fraud_probability = (1 - np.mean(probabilities)) * 100
-    print(fraud_probability)
-   
+        # 构造 JSON 响应
+        return jsonify({
+            'result': '詐騙',  # 超过50%即为詐騙
+            'matched_keywords': matched_keywords,  # 返回匹配的关键字和类型
+            'ocr_results': ocr_results if image_urls else {},  # 仅当有 image_urls 时返回 OCR 结果
+            'FraudRate': 100  # 返回平均置信度百分比
+        })
 
-    return jsonify({
-        'result': '詐騙' if fraud_probability >= 50 else '非詐騙',  # 超过50%即为詐騙
-        'matched_keywords': matched_keywords, # 返回匹配的关键字和类型
-        'ocr_results': ocr_results if image_urls else {},  # 仅当有 image_urls 时返回 OCR 结果
-        'FraudRate': fraud_probability  # 返回平均置信度百分比
-    })
+
+    
+
+    
 
 
 if __name__ == '__main__':
