@@ -108,34 +108,6 @@ async function processPythonResult(pythonResult) {
 }
 
 
-
-async function getFraudTypeDetails(type) {
-    try {
-        console.log('Searching for type:', type);
-        const snapshot = await db.collection('Statistics').where('Type', '==', type).get();
-        console.log('Searching for type:', snapshot.docs[0]);
-
-        if (!snapshot.empty) {
-            const doc = snapshot.docs[0];
-            return {
-                Remind: doc.data().Remind || '',
-                Prevent: doc.data().Prevent || '',
-            };
-        } else {
-            return {
-                Remind: '',
-                Prevent: '',
-            };
-        }
-    } catch (error) {
-        console.error('查询 FraudTypeDefine 时出错:', error.message);
-        return {
-            Remind: '',
-            Prevent: '',
-        };
-    }
-}
-
 //--------------------------------------------------------------------------------------------------
 
 export async function POST(request) {
