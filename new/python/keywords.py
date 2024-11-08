@@ -1,5 +1,5 @@
 import firebase_admin
-from firebase_admin import credentials, firestore
+from firebase_admin import  firestore
 from transformers import BertTokenizer, BertModel
 import torch
 from sklearn.feature_extraction.text import TfidfVectorizer
