@@ -176,7 +176,7 @@ export async function POST(request) {
                 fs.writeFileSync(filePath, Buffer.from(uploadedFileBuffer));
                 console.log(`文件已保存至: ${filePath}`);
 
-                const pythonResult = await sendImageUrlToPythonService('', filePath);
+                const pythonResult = await sendImageUrlToPythonService('', [filePath]);
                 fs.unlinkSync(filePath);
                 const simplifiedPythonResult = await processPythonResult(pythonResult);
                 const ID = await saveToFirestore(4, '', simplifiedPythonResult);
