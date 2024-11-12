@@ -172,12 +172,7 @@ export async function POST(request) {
             console.log(`文件 MIME 类型: ${mimeType}`);
 
            
-            if (mimeType.trim() === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') {
-                console.log("MIME type matches after trimming.");
-            } else {
-                console.log("MIME type does not match.");
-            }
-            
+          
             if (mimeType?.startsWith('image/')) {
                 const filePath = path.resolve(__dirname, `../../../../../uploads`, uploadedFileName);
                 fs.writeFileSync(filePath, Buffer.from(uploadedFileBuffer));
