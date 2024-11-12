@@ -122,12 +122,12 @@ export async function POST(request) {
 
             if (url) {
                 const result = await UrlContent(url);
-                const pythonResult = await sendImageUrlToPythonService(result.content, result.imageUrls);
+                const pythonResult = await sendImageUrlToPythonService(result.content+url, result.imageUrls);
                 const simplifiedPythonResult = await processPythonResult(pythonResult);
-                const ID = await saveToFirestore(1, content, simplifiedPythonResult);
+                const ID = await saveToFirestore(1, result.content, simplifiedPythonResult);
 
                 return createResponse(true, {
-                    ID, content, pythonResult: simplifiedPythonResult
+                    ID,  pythonResult: simplifiedPythonResult
                 });
 
             } 
@@ -171,6 +171,13 @@ export async function POST(request) {
             const mimeType = mime.lookup(uploadedFileName);
             console.log(`文件 MIME 类型: ${mimeType}`);
 
+           
+            if (mimeType.trim() === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') {
+                console.log("MIME type matches after trimming.");
+            } else {
+                console.log("MIME type does not match.");
+            }
+            
             if (mimeType?.startsWith('image/')) {
                 const filePath = path.resolve(__dirname, `../../../../../uploads`, uploadedFileName);
                 fs.writeFileSync(filePath, Buffer.from(uploadedFileBuffer));
@@ -183,7 +190,7 @@ export async function POST(request) {
 
                 return createResponse(true, { ID, pythonResult: simplifiedPythonResult });
 
-            } else if (mimeType?.startsWith('text/')) {
+            } else if (mimeType?.startsWith('text/plain')) {
                 const text = await readFileContent(Buffer.from(uploadedFileBuffer));
                 const pythonResult = await sendImageUrlToPythonService(text, []);
                 const simplifiedPythonResult = await processPythonResult(pythonResult);
@@ -191,28 +198,43 @@ export async function POST(request) {
 
                 return createResponse(true, { ID, pythonResult: simplifiedPythonResult });
 
-            } else if (mimeType === 'application/vnd.ms-excel' || mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') {
+            } else if (mimeType === 'application/vnd.ms-excel' || mimeType.trim() === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || mimeType === 'text/csv') {
                 const filePath = path.resolve(__dirname, `../../../../../uploads`, uploadedFileName);
                 fs.writeFileSync(filePath, Buffer.from(uploadedFileBuffer));
 
-                const pythonProcess = spawn('python', ['schedule_update.py', filePath], {
-                    cwd: path.join(__dirname, '../../../../../python')
+                const pythonPath = 'python'; // 或 'python3'，或者写上绝对路径
+                const pythonProcess = spawn(pythonPath, ['schedule_update.py', filePath], {
+                    cwd: path.join(__dirname, '../../../../../python'),
+                    stdio: 'pipe'  // 确保子进程输出通过管道传回
                 });
-
                 pythonProcess.stdout.on('data', (data) => {
-                    console.log(`Python 输出: ${data.toString()}`);
+                    console.log(`Python Output: ${data.toString()}`);
+                });
+                
+                // 监听错误输出
+                pythonProcess.stderr.on('data', (data) => {
+                    console.error(`Python Error: ${data.toString()}`);
+                });
+                
+                // 监听脚本结束
+                pythonProcess.on('close', (code) => {
+                    console.log(`Python script exited with code ${code}`);
                 });
 
-                const simplifiedPythonResult = {};
-                const ID = await saveToFirestore(5, '', simplifiedPythonResult);
-
-                return createResponse(true, { ID, pythonResult: simplifiedPythonResult });
-            }
-
-            return createResponse(false, {}, '不支持的文件类型');
+                
+                pythonProcess.stderr.on('data', (data) => {
+                    console.error(`Python 错误: ${data.toString()}`);
+                });
+                return createResponse(true, {}, '上傳成功');
+            
+            }else{
+                return createResponse(false, {}, '不支持的文件类型');
+                }
+            
         }
-
-        return createResponse(false, {}, '无法识别的文件类型');
+        else{return createResponse(false, {}, '无法识别的文件类型');
+    }
+        
 
     } catch (error) {
         console.error('处理失败:', error.message);
@@ -225,5 +247,8 @@ export async function POST(request) {
                 console.error('关闭浏览器失败:', closeError.message);
             }
         }
+        
     }
+    
+    
 }
