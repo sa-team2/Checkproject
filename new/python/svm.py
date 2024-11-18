@@ -120,7 +120,10 @@ def update_model2():
         docs = db.collection('Statistics').stream()
         for doc in docs:
             data = doc.to_dict()
-            descriptions[data['Type']] = data['Define']
+            fraud_type = data.get('Type')
+            fraud_define = data.get('Define')
+            if fraud_type and fraud_define:
+                descriptions[data['Type']] = data['Define']
         return descriptions
 
     # 获取文本的 BERT 嵌入
