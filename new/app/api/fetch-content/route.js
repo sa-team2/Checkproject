@@ -52,7 +52,19 @@ async function UrlContent(url) {
     
     // 获取所有图片的 URL
     const imageUrls = await page.evaluate(() =>
-        Array.from(document.querySelectorAll('img')).map(img => img.src)
+        Array.from(document.querySelectorAll('img'))
+            .map(img => img.src)
+            .filter(src => {
+                // 排除包含 "icon" 的 URL
+                if (src.includes('icon')) return false;
+                if (src.includes('title')) return false;
+                if (src.includes('logo')) return false;
+                if (src.endsWith('.svg')) return false;
+                // 排除分辨率过小的缩略图 (例如宽度或高度小于50px)
+                const imgElement = document.querySelector(`img[src="${src}"]`);
+                if (imgElement && (imgElement.width < 50 || imgElement.height < 50)) return false;
+                return true;
+            })
     );
     
     console.log(`找到图片 URL: ${imageUrls}`);
