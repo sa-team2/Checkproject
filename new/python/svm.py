@@ -12,6 +12,7 @@ import numpy as np
 import torch
 from transformers import BertTokenizer, BertModel
 from flask import Flask, request, jsonify
+import os
 
 # 初始化 Flask 应用
 app = Flask(__name__)
@@ -24,6 +25,17 @@ db = firestore.client()
 # 初始化 BERT
 tokenizer = BertTokenizer.from_pretrained('bert-base-chinese')
 bert_model = BertModel.from_pretrained('bert-base-chinese')
+
+# 删除现有的模型文件（包括 .pkl 和 .pth）
+def remove_existing_model_files():
+    # 定义需要删除的文件扩展名
+    extensions = ['.pkl', '.pth']
+    
+    # 遍历当前目录下的所有文件
+    for file in os.listdir('.'):
+        if any(file.endswith(ext) for ext in extensions):
+            os.remove(file)
+            print(f"已删除模型文件: {file}")
 
 #獲得資料表
 def get_data_from_firestore():
@@ -45,6 +57,9 @@ def encode_with_bert(data):
     return embeddings.cpu().numpy()
 
 def update_model():
+    # 删除旧模型文件
+    remove_existing_model_files()
+    
     # 从 Firestore 获取数据
     firestore_data = get_data_from_firestore()
     df = pd.DataFrame(firestore_data)
