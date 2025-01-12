@@ -61,14 +61,14 @@ def predict():
 
     # 將 OCR 文本和輸入文本合並
     
-    modified_text, lineid_data, url_data = check_text_for_lineid_and_url(combined_text)
+    text, lineid_data, url_data = check_text_for_lineid_and_url(combined_text)
 
     if not lineid_data and not url_data:
 
         from keywords import get_and_match_keywords_with_details,get_bert_embedding
-        matched_keywords = get_and_match_keywords_with_details(combined_text)
-        bert_embedding = get_bert_embedding(combined_text)
-        new_sample_vector = vectorizer.transform([combined_text]).toarray()
+        matched_keywords = get_and_match_keywords_with_details(text)
+        bert_embedding = get_bert_embedding(text)
+        new_sample_vector = vectorizer.transform([text]).toarray()
         combined_features = np.concatenate((new_sample_vector, bert_embedding), axis=1)
         new_sample_scaled = scaler.transform(combined_features)
         new_sample_pca = pca.transform(new_sample_scaled)
