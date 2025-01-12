@@ -45,14 +45,25 @@ async function UrlContent(url) {
     console.log(`处理 URL: ${url}`);
     const browser = await puppeteer.launch({ headless: true });
     const page = await browser.newPage();
+    if (!/^https?:\/\//.test(url)) {
+        url = `https://${url}`; // 补全为 https://
+    }
+    console.log(`处理 URL: ${url}`);
+
     await page.goto(url, { waitUntil: 'domcontentloaded' });
-    
-    // 获取页面文本内容
-    const content = await page.evaluate(() => document.body.innerText);
-    
-    // 获取所有图片的 URL
-    const imageUrls = await page.evaluate(() =>
-        Array.from(document.querySelectorAll('img'))
+
+    // 检查是否有 <article> 元素并根据情况提取内容
+    const { content, imageUrls } = await page.evaluate(() => {
+        let targetElement = document.querySelector('article');
+        if (!targetElement) {
+            targetElement = document.body; // 如果没有 <article>，默认抓取整个 body
+        }
+
+        // 提取文本内容
+        const content = targetElement.innerText;
+
+        // 提取图片 URL
+        const imageUrls = Array.from(targetElement.querySelectorAll('img'))
             .map(img => img.src)
             .filter(src => {
                 // 排除包含 "icon" 的 URL
@@ -64,14 +75,18 @@ async function UrlContent(url) {
                 const imgElement = document.querySelector(`img[src="${src}"]`);
                 if (imgElement && (imgElement.width < 50 || imgElement.height < 50)) return false;
                 return true;
-            })
-    );
-    
+            });
+
+        return { content, imageUrls };
+    });
+
+    console.log(`提取的内容: ${content}`);
     console.log(`找到图片 URL: ${imageUrls}`);
     await browser.close();
-    
+
     return { content, imageUrls };
 }
+
 
 
 
