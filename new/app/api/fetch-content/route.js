@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import puppeteer from 'puppeteer';
 import fetch from 'node-fetch';
 import admin from 'firebase-admin';
-import serviceAccount from '../../../config/dayofftest1-firebase-adminsdk-xfpl4-f64d9dc336.json';
+import serviceAccount from '../../../config/dayofftest1-firebase-adminsdk-xfpl4-2f3127e656.json';
 import fs from 'fs';
 import mime from 'mime-types';
 import { spawn } from 'child_process';
@@ -87,13 +87,6 @@ async function UrlContent(url) {
     return { content, imageUrls };
 }
 
-
-
-
-
-
-
-
 async function readFileContent(buffer) {
     return buffer.toString('utf-8');
 }
@@ -114,7 +107,6 @@ async function saveToFirestore(detectionType, content, pythonResult) {
     return docRef.id;
 }
 
-
 async function processPythonResult(pythonResult) {
     // 直接构造返回对象
     const matches = (pythonResult.matched_keywords || []).map(item => ({
@@ -134,7 +126,6 @@ async function processPythonResult(pythonResult) {
     return JSON.parse(JSON.stringify(simplifiedPythonResult));
 }
 
-
 //--------------------------------------------------------------------------------------------------
 
 export async function POST(request) {
@@ -145,8 +136,123 @@ export async function POST(request) {
 
         if (contentType.includes('application/json')) {
             const json = await request.json();
-            const { url, text } = json;
+            const { url, text, report_ids } = json;
 
+           // 處理 AdminPreview.jsx 的詐騙檢測功能
+if (json.reports && Array.isArray(json.reports)) {
+    console.log(`處理選定的報告，總數: ${json.reports.length}`);
+    const results = [];
+
+    for (const report of json.reports) {
+        try {
+            const reportId = report.id;
+            let reportText = report.text || '';
+
+            // 如果前端沒有傳送文本，從資料庫獲取
+            if (!reportText) {
+                const reportRef = db.collection('Report').doc(reportId);
+                const reportDoc = await reportRef.get();
+
+                if (!reportDoc.exists) {
+                    results.push({
+                        id: reportId,
+                        status: 'error',
+                        message: '找不到報告'
+                    });
+                    continue;
+                }
+
+                const reportData = reportDoc.data();
+                reportText = reportData.Report || reportData.MSG || '';
+            }
+
+            if (!reportText.trim()) {
+                results.push({
+                    id: reportId,
+                    status: 'error',
+                    message: '報告內容為空'
+                });
+                continue;
+            }
+
+            console.log(`處理報告 ${reportId}, 內容長度: ${reportText.length}`);
+
+            // 檢查內容類型
+            const urlPattern = /(https?:\/\/[^\s]+)/g;
+            const containsUrl = urlPattern.test(reportText);
+            const urls = reportText.match(urlPattern) || [];
+            
+            let allContent = reportText;
+            let allImageUrls = [];
+            let pythonResult;
+
+            if (containsUrl && urls.length > 0) {
+                console.log(`報告包含 ${urls.length} 個 URL`);
+                
+                for (const url of urls) {
+                    try {
+                        console.log(`處理 URL: ${url}`);
+                        const result = await UrlContent(url);
+                        allContent += '\n' + result.content;
+                        allImageUrls = allImageUrls.concat(result.imageUrls);
+                    } catch (urlError) {
+                        console.error(`處理 URL 出錯: ${url}`, urlError);
+                    }
+                }
+                
+                pythonResult = await sendImageUrlToPythonService(allContent, allImageUrls);
+            } else {
+                // 檢查是否包含圖片
+                const imagePattern = /\.(jpg|jpeg|png|gif|bmp)$/i;
+                const containsImage = imagePattern.test(reportText);
+                
+                if (containsImage) {
+                    console.log('報告可能包含圖片路徑');
+                    // 這裡可以添加圖片處理邏輯
+                    pythonResult = await sendImageUrlToPythonService(reportText, [reportText]);
+                } else {
+                    console.log('報告是純文本，直接處理');
+                    pythonResult = await sendImageUrlToPythonService(reportText, []);
+                }
+            }
+
+            const simplifiedPythonResult = await processPythonResult(pythonResult);
+
+            // 更新報告的 PythonResult 欄位
+            await db.collection('Report').doc(reportId).update({
+                PythonResult: simplifiedPythonResult
+            });
+
+            // 添加成功結果
+            results.push({
+                id: reportId,
+                status: 'success',
+                result: simplifiedPythonResult.FraudResult,
+                FraudRate: simplifiedPythonResult.FraudRate,
+                matched_keywords: simplifiedPythonResult.Match,
+                row: {
+                    Report: reportText.substring(0, 100) + (reportText.length > 100 ? '...' : '')
+                }
+            });
+            
+            console.log(`報告 ${reportId} 處理完成，結果: ${simplifiedPythonResult.FraudResult}`);
+        } catch (reportError) {
+            console.error(`處理報告 ${report.id} 時出錯:`, reportError);
+            results.push({
+                id: report.id,
+                status: 'error',
+                message: reportError.message || '處理報告時出錯'
+            });
+        }
+    }
+
+    return NextResponse.json({
+        success: true,
+        message: `處理了 ${json.reports.length} 個報告`,
+        results: results
+    });
+}
+            
             if (url) {
                 const result = await UrlContent(url);
                 const pythonResult = await sendImageUrlToPythonService(result.content+url, result.imageUrls);
