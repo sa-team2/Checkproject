@@ -5,7 +5,7 @@ import torch.nn as nn
 import re
 
 # 載入 Hugging Face 的 Zero-shot Learning 分類模型
-classifier = pipeline("zero-shot-classification", model="./model", tokenizer="./model")
+classifier = pipeline("zero-shot-classification", model="./emomodel", tokenizer="./emomodel")
 
 # 擴展詐騙情緒類別 - 詐騙者情緒
 scam_perpetrator_emotions = [
@@ -77,6 +77,10 @@ def analyze_scam_emotion(text, emotion_group):
 # 處理長文本並分段預測
 from collections import defaultdict
 
+import time
+import re
+from collections import defaultdict
+
 def process_long_text(text, model, tokenizer, device):
     # 先將輸入的長文本分割成句子（此處簡單以句號為分隔符，實際應用中可根據需求改進分割規則）
     sentences = re.split(r'(?<=[。！？])\s*', text)  # 分隔符為：句號、問號、感嘆號和後續的空格
@@ -89,11 +93,17 @@ def process_long_text(text, model, tokenizer, device):
             role = predict_role(sentence.strip(), model, tokenizer, device)
             results.append((sentence.strip(), role))
 
+            print()
+            print(f"句子: {sentence} 預測角色: {role}")
             # 根據角色進行情緒分析
             if role == "詐騙者":
                 emotion_result = analyze_scam_emotion(sentence, scam_perpetrator_emotions)
+                print("詐騙者情緒分析：", emotion_result)
+
             elif role == "受害者":
-                emotion_result = analyze_scam_emotion(sentence, scam_victim_emotions)
+                # emotion_result = analyze_scam_emotion(sentence, scam_victim_emotions)
+                print("受害者")
+                emotion_result = {}
             else:
                 emotion_result = {}  # 如果無法識別角色，就跳過
 
@@ -103,7 +113,7 @@ def process_long_text(text, model, tokenizer, device):
                     emotion_scores[emotion] += score  # 累計所有情緒的分數
 
     # 找出累計分數最高的情緒
-    max_emotion = max(emotion_scores, key=emotion_scores.get, default=None)
+    max_emotion = max(emotion_scores, key=emotion_scores.get, default="無")
     max_score = emotion_scores.get(max_emotion, 0)
 
     return results, max_emotion, max_score
@@ -111,38 +121,36 @@ def process_long_text(text, model, tokenizer, device):
 
 
 # 交互式輸入
+import time
+
+# 交互式輸入
 def interactive_input(text):
-    # 設置設備（GPU/CPU）
+    # Step 1: 設置設備
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    
-    # 加載 BERT 分詞器
-    tokenizer = BertTokenizer.from_pretrained("./emo_model") 
-    
-    # 加載模型
-    model = BertForSequenceClassification.from_pretrained("./emo_model")
-    model.to(device)  # 將模型移動到相應設備（GPU/CPU）
 
-    # 處理長文本並輸出每個句子的角色
+    # Step 2: 加載分詞器與模型
+    t0 = time.time()
+    tokenizer = BertTokenizer.from_pretrained("bert-base-chinese")
+    model_path = "model/bert_role_classifier.pth"
+    model = load_model(model_path, device)
+    t1 = time.time()
+    print(f"🔧 模型與分詞器加載耗時：{t1 - t0:.4f} 秒")
+
+    # Step 3: 處理長文本並分析角色與情緒
+    t2 = time.time()
     roles, max_emotion, max_score = process_long_text(text, model, tokenizer, device)
+    t3 = time.time()
+    print(f"🧠 長文本處理與情緒分析耗時：{t3 - t2:.4f} 秒")
 
-    for sentence, role in roles:
-        print()
-        print(f"句子: {sentence} 預測角色: {role}")
-
-        # 根據預測的角色進行情緒分析
-        if role == "詐騙者":
-            emotion_result = analyze_scam_emotion(sentence, scam_perpetrator_emotions)
-            print("詐騙者情緒分析：", emotion_result)
-        elif role == "受害者":
-            emotion_result = analyze_scam_emotion(sentence, scam_victim_emotions)
-            print("受害者情緒分析：", emotion_result)
-        else:
-            print("無法識別的角色。")
-
-    # 顯示累計的最高情緒和分數
+    # Step 5: 顯示累積情緒結果
     print(f"\n🌟 累計情緒分數：最高情緒是 '{max_emotion}'，總分：{max_score:.2f}")
 
-    return max_emotion,max_score
+    # 總耗時
+    total_time = t3 - t0
+    print(f"\n⏱️ 總耗時：{total_time:.4f} 秒")
+
+    return max_emotion, max_score
+
 
 # 使用範例：
 if __name__ == "__main__":
