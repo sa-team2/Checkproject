@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import puppeteer from 'puppeteer';
 import fetch from 'node-fetch';
 import admin from 'firebase-admin';
-import serviceAccount from '../../../config/dayofftest1-firebase-adminsdk-xfpl4-f64d9dc336.json';
+import serviceAccount from '../../../config/dayofftest1-firebase-adminsdk-xfpl4-2f3127e656.json';
 import fs from 'fs';
 import mime from 'mime-types';
 import { spawn } from 'child_process';
@@ -165,14 +165,20 @@ export async function POST(request) {
         
         if (contentType.includes('application/json')) {
             const json = await request.json();
-            const { url, text } = json;
+            const { url, text, from } = json;
 
             if (url) {
                 const result = await UrlContent(url);
                 const pythonResult = await sendImageUrlToPythonService(result.content+url, result.imageUrls);
                 const simplifiedPythonResult = await processPythonResult(pythonResult);
-                const ID = await saveToFirestore(1, result.content, simplifiedPythonResult);
-
+                if (from !== undefined) {
+                    console.log(`請求來自: ${from}`);
+                  }
+                  let ID = null;
+                  if (from === undefined) {
+                    ID = await saveToFirestore(1, result.content, simplifiedPythonResult);
+                    console.log(`已儲存到資料庫`);
+                  }
                 return createResponse(true, {
                     ID,  pythonResult: simplifiedPythonResult
                 });
@@ -202,8 +208,14 @@ export async function POST(request) {
                     
                 }
                 const simplifiedPythonResult = await processPythonResult(pythonResult);
-                const ID = await saveToFirestore(2, text, simplifiedPythonResult);
-            
+                if (from !== undefined) {
+                    console.log(`請求來自: ${from}`);
+                  }
+                  let ID = null;
+                  if (from === undefined) {
+                    ID = await saveToFirestore(2, text, simplifiedPythonResult);
+                    console.log(`已儲存到資料庫`);
+                  }
             
                 return createResponse(true, {
                     ID, 
@@ -214,6 +226,7 @@ export async function POST(request) {
 
         } else if (contentType.includes('multipart/form-data')) {
             const formData = await request.formData();
+            const from = formData.get('from');         // 拿來源
             const file = formData.get('file');
             const uploadedFileBuffer = await file.arrayBuffer();
             const uploadedFileName = file.name; 
@@ -232,7 +245,15 @@ export async function POST(request) {
                 const pythonResult = await sendImageUrlToPythonService('', [filePath]);
                 fs.unlinkSync(filePath);
                 const simplifiedPythonResult = await processPythonResult(pythonResult);
-                const ID = await saveToFirestore(4, '', simplifiedPythonResult);
+                let ID = null;
+                if (from == null) {
+                    ID = await saveToFirestore(4, '', simplifiedPythonResult);
+                    console.log(`已儲存到資料庫`);
+                  }
+                else{
+                    console.log(`請求來自: ${from}`);
+                }
+                
 
                 return createResponse(true, { ID, pythonResult: simplifiedPythonResult });
 
