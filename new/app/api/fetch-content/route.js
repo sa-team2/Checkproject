@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import puppeteer from 'puppeteer';
 import fetch from 'node-fetch';
 import admin from 'firebase-admin';
-import serviceAccount from '../../../config/dayofftest1-firebase-adminsdk-xfpl4-2f3127e656.json';
+import serviceAccount from '../../../config/dayofftest1-firebase-adminsdk-xfpl4-f64d9dc336.json';
 import fs from 'fs';
 import mime from 'mime-types';
 import { spawn } from 'child_process';
