@@ -14,6 +14,32 @@ cred = credentials.Certificate("../config/dayofftest1-firebase-adminsdk-xfpl4-f6
 firebase_admin.initialize_app(cred)
 db = firestore.client()
 
+
+model_save_path = "bert"  # 設定儲存的資料夾名稱
+
+# 清空資料夾內容（但保留資料夾本身）
+import os
+import shutil
+if os.path.exists(model_save_path):
+    for filename in os.listdir(model_save_path):
+        file_path = os.path.join(model_save_path, filename)
+        try:
+            if os.path.isfile(file_path) or os.path.islink(file_path):
+                os.unlink(file_path)
+                print(f"成功刪除檔案：{file_path}")
+            elif os.path.isdir(file_path):
+                shutil.rmtree(file_path)
+                print(f"成功刪除資料夾：{file_path}")
+        except Exception as e:
+            print(f"❌ 無法刪除 {file_path}：{e}")
+else:
+    os.makedirs(model_save_path)
+    print(f"📁 資料夾不存在，已建立：{model_save_path}")
+
+
+
+
+
 # ========== 2. 從 Firestore 讀取詐騙數據 ========== 
 def get_data_from_firestore():
     collection_ref = db.collection("FraudDefine")
@@ -114,7 +140,6 @@ def train(model, dataloader, optimizer, loss_fn, epochs=2):
 train(model, dataloader_resampled, optimizer, loss_fn)
 
 # ==========  儲存模型與 tokenizer ========== 
-model_save_path = "bert"  # 設定儲存的資料夾名稱
 
 # 儲存模型
 model.save_pretrained(model_save_path)
