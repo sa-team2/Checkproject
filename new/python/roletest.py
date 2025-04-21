@@ -77,7 +77,6 @@ def analyze_scam_emotion(text, emotion_group):
 # 處理長文本並分段預測
 from collections import defaultdict
 
-import time
 import re
 from collections import defaultdict
 
@@ -114,7 +113,12 @@ def process_long_text(text, model, tokenizer, device):
 
     # 找出累計分數最高的情緒
     max_emotion = max(emotion_scores, key=emotion_scores.get, default="無")
-    max_score = emotion_scores.get(max_emotion, 0)
+    max_score  = emotion_scores.get(max_emotion, 0)
+
+    if len(sentences) > 0:  # 用句子數量計算平均分數
+        max_score = max_score / len(sentences)
+    else:
+        max_score = 0
 
     return results, max_emotion, max_score
 
