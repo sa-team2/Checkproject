@@ -243,11 +243,13 @@ export async function POST(request) {
                 console.log(`文件已保存至: ${filePath}`);
 
                 const pythonResult = await sendImageUrlToPythonService('', [filePath]);
+                const content = pythonResult?.content || '';  // 提取 content 欄位
                 fs.unlinkSync(filePath);
                 const simplifiedPythonResult = await processPythonResult(pythonResult);
+                console.log(`從 Python 獲得的內容: ${content}`);
                 let ID = null;
                 if (from == null) {
-                    ID = await saveToFirestore(4, '', simplifiedPythonResult);
+                    ID = await saveToFirestore(4, content, simplifiedPythonResult);
                     console.log(`已儲存到資料庫`);
                   }
                 else{
