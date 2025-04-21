@@ -26,7 +26,7 @@ print("已清空 emomodel 資料夾。")
 
 # ========== 第二步：儲存 Zero-shot 模型 ==========
 print("正在下載並儲存 Zero-shot 模型...")
-classifier = pipeline("zero-shot-classification", model="facebook/bart-large-mnli")
+classifier = pipeline("zero-shot-classification", model="IDEA-CCNL/Erlangshen-Roberta-110M-NLI")
 classifier.model.save_pretrained(emomodel_dir)
 classifier.tokenizer.save_pretrained(emomodel_dir)
 print("Zero-shot 模型已成功儲存！")

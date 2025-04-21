@@ -45,9 +45,34 @@ def predict():
         from fraud_model import predict
         from roletest import interactive_input
 
+        import time
+
+        # 第一行
+        start_time_1 = time.time()
         matched_keywords = get_and_match_keywords_with_details(text)
+        end_time_1 = time.time()
+        print(f"matched_keywords 耗時：{end_time_1 - start_time_1:.4f} 秒")
+        # keyword = [item["keyword"] for item in matched_keywords]
+        # print(keyword)
+
+        # 第二行
+        start_time_2 = time.time()
         fraud_probability = predict(text)
-        max_emotion,max_score=interactive_input(text)
+        end_time_2 = time.time()
+        print(f"fraud_probability 耗時：{end_time_2 - start_time_2:.4f} 秒")
+
+        # 第三行
+        start_time_3 = time.time()
+        print(len(text))
+        if len(text) > 200:
+            print("文本長度超過200字，不進行情緒分析。")
+            max_emotion, max_score = None, 0  # 或者可以設置為其他處理結果
+        else:
+            max_emotion, max_score = interactive_input(text)        
+        end_time_3 = time.time()
+        print(f"interactive_input 耗時：{end_time_3 - start_time_3:.4f} 秒")
+        print(f"總耗時：{end_time_3 - start_time_1:.4f} 秒")
+
         # 按照比例缩放欺诈可能性
         scaled_fraud_probability = fraud_probability * 0.9  # 90% 是欺诈概率
         scaled_max_score = max_score * 100 * 0.1  # 10% 是 max_score * 100
@@ -63,7 +88,7 @@ def predict():
         return jsonify({
             'result': '詐騙' if total_probability >= 50 else '非詐騙',  # 超过50%即为詐騙
             'matched_keywords': matched_keywords, # 返回匹配的关键字和类型
-            'ocr_results': ocr_results if image_urls else {},  # 仅当有 image_urls 时返回 OCR 结果
+            'content': text if text else {},  # 仅当有 image_urls 时返回 OCR 结果
             'FraudRate': total_probability , # 返回平均置信度百分比
             'Emotion':max_emotion
         })
