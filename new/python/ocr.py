@@ -80,7 +80,6 @@ def process_images(image_urls):
     """批量处理图像 URLs，并返回 OCR 结果"""
     ocr_texts = []
     ocr_results = {}
-
     for image_url in image_urls:
         if (image_url in processed_urls) and is_url(image_url):
             print(f"Skipping already processed URL: {image_url}")
@@ -99,6 +98,8 @@ def process_images(image_urls):
             enhanced_image = enhance_image(image)
             ocr_data = perform_ocr(enhanced_image)
             ocr_text = extract_text_from_ocr(ocr_data)
+            print("ocr_text",ocr_text)
+
             ocr_texts.append(ocr_text)
             ocr_results[image_url] = ocr_text
 
@@ -106,7 +107,6 @@ def process_images(image_urls):
             print(f"Failed to process image {image_url}: {e}")
             ocr_results[image_url] = str(e)
 
-        if not is_url(image_url):
-            break
+        
 
     return ocr_texts, ocr_results
