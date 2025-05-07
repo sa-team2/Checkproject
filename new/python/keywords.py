@@ -4,6 +4,8 @@ from transformers import BertTokenizer, BertModel
 import torch
 from sklearn.feature_extraction.text import TfidfVectorizer
 import numpy as np
+import re
+from sklearn.feature_extraction.text import TfidfVectorizer
 
 
 
@@ -13,7 +15,7 @@ db = firestore.client(app)
 DEFAULT_TYPE = "未知"  # 默认类型
 
 # 加载詐騙類型的模型2和嵌入
-checkpoint = torch.load('bert_fraud_model.pth')
+checkpoint = torch.load('./model/bert_fraud_model.pth')
 model_type = BertModel.from_pretrained('bert-base-chinese')
 model_type.load_state_dict(checkpoint['model_state_dict'])
 model_type.eval()
@@ -56,31 +58,36 @@ def predict_fraud_types(keywords):
 
 
 
+
 def find_suspicious_keywords(text, keywords_data):
-    """使用 TF-IDF 提取最可疑关键词"""
-    
-    # 这里我们不拆分为单个词，而是直接将文本传给 TF-IDF
+    """使用 TF-IDF 提取最可疑的中文關鍵詞"""
+
+    # 僅保留中文字元（\u4e00-\u9fff 是 CJK 統一漢字範圍）
+    text = ''.join(re.findall(r'[\u4e00-\u9fff]+', text))
+    print("text",text)
+    # 使用 TF-IDF 分析
     vectorizer = TfidfVectorizer()
-    tfidf_matrix = vectorizer.fit_transform([text])  # 直接使用原始文本
+    tfidf_matrix = vectorizer.fit_transform([text])
     feature_names = vectorizer.get_feature_names_out()
     tfidf_scores = tfidf_matrix.toarray()[0]
 
-    # 选取 TF-IDF 分数最高的两个关键词
+    # 取得 TF-IDF 分數最高的兩個詞
     top_indices = tfidf_scores.argsort()[-2:][::-1]
     suspicious_keywords = [feature_names[i] for i in top_indices]
 
-    # 检查关键词是否已在数据库中
+    # 檢查這些關鍵詞是否已在資料庫中
     classified_keywords = [
         (kw, kd['type']) for kw in suspicious_keywords
         for kd in keywords_data if kw == kd['keyword']
     ]
 
-    # 若不在数据库中，进行预测
+    # 若資料庫中無此關鍵詞，則嘗試預測其詐騙類型
     if not classified_keywords:
         predicted_types = predict_fraud_types(suspicious_keywords)
         classified_keywords = [(kw, pt if pt else DEFAULT_TYPE) for kw, pt in predicted_types]
 
     return classified_keywords
+
 
 
 
@@ -140,4 +147,3 @@ def get_and_match_keywords_with_details(text):
             item['Prevent'] = ''
 
     return matched
-
