@@ -5,7 +5,6 @@ import torch
 from sklearn.feature_extraction.text import TfidfVectorizer
 import numpy as np
 import re
-from sklearn.feature_extraction.text import TfidfVectorizer
 
 
 
@@ -62,51 +61,37 @@ def predict_fraud_types(keywords):
 import google.generativeai as genai
 
 # 初始化 Gemini（確保你已經設置好 API Key）
-genai.configure(api_key="# 替換為你的真實金鑰")  
+genai.configure(api_key="")  
 model_gemini = genai.GenerativeModel("models/gemini-1.5-pro-latest")
 
-def find_suspicious_keywords(text, keywords_data):
-    """使用 Gemini 分析訊息並找出可疑詐騙關鍵字"""
+def find_suspicious_keywords(text):
+    """使用 Gemini 抓出1~2個可疑關鍵字（不需分類）"""
     prompt = f"""
-你是一個專業的語意分析、情緒分類 AI，請分析以下訊息是否為詐騙，但要避免將「防詐騙提醒」誤判為詐騙。
+你是一個專業的語意分析、情緒分類、對於詐騙很敏銳的 AI，請分析以下訊息是否為詐騙，但要避免將「防詐騙提醒」誤判為詐騙。
 
 ### 訊息如下：
 {text}
 
 ### 任務：
-1. 不論此是否為詐騙，請找出1到2個**詐騙關鍵字或關鍵句**。
+1. 不論是否為詐騙，請找出1-2個**詐騙關鍵字或關鍵句**。
 2. 使用格式：suspicious_keywords=關鍵字1, 關鍵字2
-3. 如果沒有明確的關鍵字，請自己找出最可能的詐騙關鍵字，並給出可能的詐騙類型。
 """
 
     try:
         response = model_gemini.generate_content(prompt)
         content = response.text
 
-        # 從 Gemini 回傳的格式中擷取 suspicious_keywords
         match = re.search(r"suspicious_keywords\s*=\s*(.+)", content)
         if match:
             keywords_str = match.group(1)
             suspicious_keywords = [kw.strip() for kw in keywords_str.split(',') if kw.strip()]
         else:
             suspicious_keywords = []
-
     except Exception as e:
         print(f"Gemini 分析出錯: {e}")
         suspicious_keywords = []
 
-    # 檢查這些關鍵詞是否已在資料庫中
-    classified_keywords = [
-        (kw, kd['type']) for kw in suspicious_keywords
-        for kd in keywords_data if kw == kd['keyword']
-    ]
-
-    # 若資料庫中無此關鍵詞，則嘗試預測其詐騙類型
-    if not classified_keywords and suspicious_keywords:
-        predicted_types = predict_fraud_types(suspicious_keywords)
-        classified_keywords = [(kw, pt if pt else DEFAULT_TYPE) for kw, pt in predicted_types]
-
-    return classified_keywords
+    return suspicious_keywords
 
 
 
@@ -114,11 +99,14 @@ def find_suspicious_keywords(text, keywords_data):
 
 
 def get_and_match_keywords_with_details(text):
-    """從 Firebase 獲取關鍵字和類型，匹配或預測文本中的關鍵字及其類型，並獲取 Remind 和 Prevent 資訊"""
-    matched = []
+    """
+    從 Gemini 分析原文取得關鍵字 → 與 Firebase 資料庫比對 → 回傳匹配或 BERT 預測的關鍵字與類型
+    並取得對應 Remind 和 Prevent 資訊
+    """
+    result = []
     keywords_data = []
 
-    # 從 Firebase 獲取關鍵字和類型
+    # Step 1: 讀取 Firebase FraudDefine 資料表中的所有關鍵字與類型
     try:
         keywords_ref = db.collection('FraudDefine')
         docs = keywords_ref.stream()
@@ -130,31 +118,43 @@ def get_and_match_keywords_with_details(text):
                     'type': keyword_info['Type']
                 })
     except Exception as e:
-        print(f"Failed to fetch keywords from Firebase: {e}")
-        return matched
+        print(f"讀取 FraudDefine 錯誤: {e}")
+        return result
 
-    # 匹配關鍵字
-    matched = [
-        {'keyword': kd['keyword'], 'type': kd['type']}
-        for kd in keywords_data if kd['keyword'] in text
-    ]
+    # Step 2: 透過 Gemini 從原文中提取詐騙關鍵字
+    suspicious_keywords = []
+    try:
+        suspicious_keywords = find_suspicious_keywords(text)
+    except Exception as e:
+        print(f"從 Gemini 抓取關鍵字失敗: {e}")
+        return result
 
-    # 如果沒有匹配到關鍵字，則進行預測
-    if not matched:
-        suspicious_keywords = find_suspicious_keywords(text, keywords_data)
-        predicted_types = predict_fraud_types([kw for kw, _ in suspicious_keywords])
+    if not suspicious_keywords:
+        return result
 
-        matched.extend({
-            'keyword': kw,
-            'type': pt if pt else DEFAULT_TYPE
-        } for kw, pt in predicted_types)
+    # Step 3: 將抓出的關鍵字與資料庫關鍵字比對
+    matched = []
 
-    # 獲取每個匹配或預測的關鍵字類型的 Remind 和 Prevent 資訊
+    for keyword in suspicious_keywords:
+        match = next((kd for kd in keywords_data if keyword in kd['keyword'] or kd['keyword'] in keyword), None)
+        if match:
+            matched.append({
+                'keyword': keyword,
+                'type': match['type']
+            })
+        else:
+            # 這裡直接使用 BERT 預測這個關鍵字的類型
+            predicted_type = predict_fraud_types([keyword])[0][1]
+            matched.append({
+                'keyword': keyword,
+                'type': predicted_type if predicted_type else DEFAULT_TYPE
+            })
+
+    # Step 4: 加上 Remind 和 Prevent 資訊（根據 type）
     for item in matched:
         try:
             snapshot = db.collection('Statistics').where('Type', '==', item['type']).stream()
-            doc = next(snapshot, None)  # 獲取第一個匹配文檔，若沒有則返回 None
-
+            doc = next(snapshot, None)
             if doc:
                 data = doc.to_dict()
                 item['Remind'] = data.get('Remind', '')
