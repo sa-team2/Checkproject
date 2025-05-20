@@ -19,11 +19,12 @@ async function getPage() {
         // 遍歷並抓取前 6 筆資料的標題和簡介
         $('div.Cf').each((index, element) => {
             if (index < 6) {  // 只抓取前 6 筆資料
+                const sourceTime = $(element).find('div.Fz\\(13px\\).Mb\\(6px\\)').text();
                 const title = $(element).find('h3.Mb\\(5px\\) a').text();
                 const description = $(element).find('p.Mt\\(8px\\)').text();
                 const link = `https://tw.news.yahoo.com${$(element).find('h3.Mb\\(5px\\) a').attr('href')}`;
                 const img = $(element).find('img').attr('src');
-                articles.push({ title, description, link, img });
+                articles.push({ sourceTime, title, description, link, img });
             } else {
                 return false;
             }
