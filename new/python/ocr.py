@@ -24,6 +24,7 @@ def download_image_from_url(image_url):
         if image is None:
             raise Exception(f"Failed to decode image: {image_url}")
         return image
+    
     except Exception as e:
         print(f"Failed to download or decode image {image_url}: {e}")
         return None
